@@ -1,10 +1,10 @@
 CC = cc
 CFLAGS = -Wall -g -pedantic
-EXEC = main
+EXEC = client
 
 all: $(EXEC)
 
-main: src/main.c
+client: src/client.c
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
