@@ -1,14 +1,14 @@
-CC = gcc
+CC = cc
 CFLAGS = -Wall -g -pedantic
 EXEC = main
 
-.PHONY: clean
-
 all: $(EXEC)
 
-main:
-	echo "à définir"
+main: src/main.c
+	$(CC) $(CFLAGS) $< -o $@
 
 clean:
 	rm -rf $(EXEC) *.dSYM
+
+.PHONY: all main clean
 	

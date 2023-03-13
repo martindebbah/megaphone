@@ -1,5 +1,5 @@
 # Auteurs du projet
 
-AHMED YAHIA Yacine (*num à ajouter*)
+AHMED YAHIA Yacine (22001256)
 DEBBAH Martin (71804727)
-ZHOU Alexandre (*num à ajouter*)
+ZHOU Alexandre (22008179)
