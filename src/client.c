@@ -36,7 +36,8 @@ int main(void) {
     }
 
     // inscription
-    
+    new_client_t *new_client = create_new_client("Martin");
+    delete_new_client(new_client);
 
     close(sock);
     // `echo $?` pour valeur de retour

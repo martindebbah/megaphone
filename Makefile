@@ -4,11 +4,11 @@ EXEC = client
 
 all: $(EXEC)
 
-client: src/client.c
-	$(CC) $(CFLAGS) $< -o $@
+client: src/client.c src/billet.c # Voir pour simplifier l'écriture
+	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
 	rm -rf $(EXEC) *.dSYM
 
-.PHONY: all main clean
+.PHONY: all client clean
 	
