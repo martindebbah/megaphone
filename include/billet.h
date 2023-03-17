@@ -3,20 +3,15 @@
 
 #include <unistd.h>
 
-// Représente l'entête d'un billet
-typedef struct entete_t {
-    uint16_t entete;
-} entete_t;
-
 // Représente le billet pour un nouveau client
 typedef struct new_client_t {
-    entete_t *entete;
+    uint16_t entete;
     char pseudo[10];
 } new_client_t;
 
 // Représente un billet envoyé par le client
 typedef struct billet_t {
-    entete_t *entete;
+    uint16_t entete;
     uint16_t numfil;
     uint16_t nb;
     uint8_t datalen;
@@ -25,21 +20,42 @@ typedef struct billet_t {
 
 // Représente le format UDP pour l'envoi de fichier
 typedef struct udp_t {
-    entete_t *entete;
+    uint16_t entete;
     uint16_t numblock;
     char *paquet[512]; // A définir
 } udp_t;
 
 // Crée une entête
-entete_t *create_entete(int codereq, int id);
+uint16_t create_entete(int codereq, int id);
 
-// Libère la mémoire occupée par une entête
-void delete_entete(entete_t *entete);
+
+// New client:
 
 // Crée une requête pour l'inscription du client
 new_client_t *create_new_client(char *pseudo);
 
+// Envoie un `new client` sur le file descriptor donné
+int send_new_client(int fd, new_client_t *new_client);
+
+// Lire un `new client` (server)
+void read_new_client(int fd, new_client_t *new_client);
+
 // Libère la mémoire allouée pour l'inscription du client
 void delete_new_client(new_client_t *new_client);
+
+
+// Billet:
+
+// Crée une requête pour l'envoi d'un billet
+billet_t *create_billet(int codereq, int id, int numfil, int nb, int datalen, char *data);
+
+// Envoie un billet sur le file descriptor donné
+int send_billet(int fd, billet_t *billet);
+
+// Lit un billet (server)
+void read_billet(int fd, billet_t *billet);
+
+// Libère la mémoire allouée pour un billet
+void delete_billet(billet_t *billet);
 
 #endif
