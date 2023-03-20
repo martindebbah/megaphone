@@ -1,14 +1,19 @@
+SRCS_CLIENT = src/client.c src/message.c
+SRCS_SERVER = src/server.c
+
 CC = cc
 CFLAGS = -Wall -g -pedantic
-EXEC = client
+EXEC = client server
 
-all: $(EXEC)
+all: ${EXEC}
 
-client: src/client.c src/billet.c # Voir pour simplifier l'écriture
+client: ${SRCS_CLIENT}
+	$(CC) $(CFLAGS) $^ -o $@
+
+server: ${SRCS_SERVER}
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
-	rm -rf $(EXEC) *.dSYM
+	rm -rf ${EXEC} *.dSYM
 
-.PHONY: all client clean
-	
+.PHONY: all client server clean
