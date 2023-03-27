@@ -11,14 +11,14 @@
 // poste un billet sur le serveur renvoie 0 en cas de succès, 1 sinon
 int poster_billet(int sock, int id, int numfil, char *data, int datalen){
     // on crée le billet
-    billet_t *billet = create_billet(2, id, numfil, 0, datalen, data);
+    client_message_t *billet = create_client_message(2, id, numfil, 0, datalen, data);
     if(billet == NULL){
         perror("Erreur création billet");
         return 1;
     }
 
     // on envoie le billet
-    if(send_billet(sock, billet) != 0){
+    if(send_client_message(sock, billet) != 0){
         perror("Erreur envoi billet");
         return 1;
     }
@@ -31,14 +31,14 @@ int poster_billet(int sock, int id, int numfil, char *data, int datalen){
 // demander la liste des n derniers billets
 int demander_billets(int sock, int id, int numfil, int n){
     // on crée le billet
-    billet_t *billet = create_billet(3, id, numfil, n, 0, "");
+    client_message_t *billet = create_client_message(3, id, numfil, n, 0, "");
     if(billet == NULL){
         perror("Erreur création billet");
         return 1;
     }
 
     // on envoie le billet
-    if(send_billet(sock, billet) != 0){
+    if(send_client_message(sock, billet) != 0){
         perror("Erreur envoi billet");
         return 1;
     }
