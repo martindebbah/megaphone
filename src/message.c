@@ -1,7 +1,7 @@
 #include "../include/megaphone.h"
 
 // Affiche deux octets (de gauche à droite: poids fort -> poids faible)
-void print(uint16_t t) { // A retirer
+void print(uint16_t t) {
     for (int i = 15; i >= 0; i--) {
         if (t & (1 << i))
             printf("1");
@@ -43,10 +43,9 @@ new_client_t *create_new_client(char *pseudo) {
     }
 
     // Création de l'en-tête (CODEREQ = 1, ID = 0)
-    new_client -> codereq = 1;
-    new_client -> id = 0;
+    new_client -> header = create_header(1, 0);
 
-    // Remplissage du PSEUDO
+    // Remplissage du pseudo
     int pseudo_len = strlen(pseudo);
     for (int i = 0; i < 10; i++) {
         if (i < pseudo_len)
@@ -64,12 +63,9 @@ new_client_t *create_new_client(char *pseudo) {
 }
 
 int send_new_client(int fd, new_client_t *new_client) {
-    // Mise au format big-endian de l'en-tête
-    uint16_t header = create_header(new_client -> codereq, new_client -> id);
-
     // Copie du message dans un tableau de char
     char data[12];
-    memmove(&data[0], &header, 2);
+    memmove(&data[0], &(new_client -> header), 2);
     memmove(&data[2], &(new_client -> pseudo), 10);
 
     // Envoi du tableau
@@ -93,13 +89,15 @@ client_message_t *create_client_client_message(int codereq, int id, int numfil, 
         goto error;
     }
 
-    client_message -> codereq = codereq;
-    client_message -> id = id;
-    client_message -> numfil = (uint16_t) numfil;
-    client_message -> nb = (uint16_t) nb;
+    // Création de l'en-tête
+    client_message -> header = create_header(codereq, id);
+    // Mise au format big-endian de numfil
+    client_message -> numfil = htons((uint16_t) numfil);
+    // Mise au format big-endian de nb
+    client_message -> nb = htons((uint16_t) nb);
+    // Ajout de datalen
     client_message -> datalen = (uint16_t) datalen;
-
-    // Copie de DATA
+    // Copie du texte
     client_message -> data = calloc(1, datalen);
     if (!client_message -> data) {
         perror("alloc data client_message");
@@ -116,18 +114,11 @@ client_message_t *create_client_client_message(int codereq, int id, int numfil, 
 }
 
 int send_client_message(int fd, client_message_t *client_message) {
-    // Mise au format big-endian de l'en-tête
-    uint16_t header = create_header(client_message -> codereq, client_message -> id);
-    // Mise au format big-endian de NUMFIL
-    uint16_t numfil = htons( client_message -> numfil);
-    // Mise au format big-endian de NB
-    uint16_t nb = htons( client_message -> nb);
-
     // Copie du client_message dans un tableau de char
     char data[7 + client_message -> datalen];
-    memmove(&data[0], &header, 2);
-    memmove(&data[2], &numfil, 2);
-    memmove(&data[4], &nb, 2);
+    memmove(&data[0], &(client_message -> header), 2);
+    memmove(&data[2], &(client_message -> numfil), 2);
+    memmove(&data[4], &(client_message -> nb), 2);
     memmove(&data[6], &(client_message -> datalen), 1);
     memmove(&data[7], client_message -> data, client_message -> datalen);
 
@@ -155,27 +146,22 @@ server_message_t *create_server_message(int codereq, int id, int numfil, int nb)
         return NULL;
 	}
 
-    server_message -> codereq = codereq;
-    server_message -> id = id;
-    server_message -> numfil = numfil;
-    server_message -> nb = nb;
+    // Création de l'en-tête
+	server_message -> header = create_header(codereq, id);
+    // Mise au format big-endian de numfil
+	server_message -> numfil = htons((uint16_t) numfil);
+    // Mise au format big-endian de nb
+	server_message -> nb = htons((uint16_t) nb);
 
 	return (server_message);
 }
 
 int send_server_message(int fd, server_message_t *server_message) {
-    // Mise au format big-endian de l'en-tête
-	uint16_t header = create_header(server_message -> codereq, server_message -> id);
-    // Mise au format big-endian de NUMFIL
-	uint16_t numfil = htons( server_message -> numfil);
-    // Mise au format big-endian de NB
-	uint16_t nb = htons( server_message -> nb);
-
     // Copie du message dans un tableau de char
 	char data[6];
-	memmove(&data[0], &header, 2);
-    memmove(&data[2], &numfil, 2);
-	memmove(&data[2], &nb, 2);
+	memmove(&data[0], &(server_message -> header), 2);
+    memmove(&data[2], &(server_message -> numfil), 2);
+	memmove(&data[2], &(server_message -> nb), 2);
 
 
     // Envoi du tableau
@@ -187,81 +173,7 @@ int send_server_message(int fd, server_message_t *server_message) {
 	return 0;
 }
 
-server_message_t *read_server_message(int fd) {
-    server_message_t *server_message = calloc(1, sizeof(server_message_t));
-    if (!server_message) {
-        perror("alloc read server_message");
-        goto error;
-    }
-
-    uint16_t msg[3];
-    if (read(fd, msg, 48) < 0) {
-        perror("read server message");
-        goto error;
-    }
-
-    uint16_t header = ntohs(msg[0]);
-    server_message -> codereq = header & 0x1F;
-    server_message -> id = header >> 5;
-    server_message -> numfil = ntohs(msg[1]);
-    server_message -> nb = ntohs(msg[2]);
-
-    return server_message;
-
-    error:
-        if (server_message)
-            delete_server_message(server_message);
-        return NULL;
-}
-
 void delete_server_message(server_message_t *server_message) {
     if (server_message)
 	    free(server_message);
-}
-
-subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int addrmult) {
-    subscribe_t *subscribe_message = calloc(1, sizeof(subscribe_t));
-    if (!subscribe_message) {
-        perror("alloc subscribe_message");
-        goto error;
-    }
-
-    // Création du message serveur
-    subscribe_message -> server_message = create_server_message(codereq, id, numfil, nb);
-    if (!subscribe_message -> server_message) {
-        perror("server_message in subscribe_message");
-        goto error;
-    }
-
-    // Mise au format big-endian de ADDRMULT
-    subscribe_message -> addrmult = htonl(addrmult);
-
-    return subscribe_message;
-
-    error:
-        if (subscribe_message)
-            delete_subscribe_message(subscribe_message);
-        return NULL;
-}
-
-int send_subscribe_message(int fd, subscribe_t *subscribe_message) {
-    if (send_server_message(fd, subscribe_message -> server_message) /* == 1 */) {
-        perror("write server_message in subscribe_message");
-        return 1;
-    }
-    
-    if (write(fd, &(subscribe_message -> addrmult), 16) < 0) {
-        perror("write addrmult in subscribe_message");
-        return 1;
-    }
-
-    return 0;
-}
-
-void delete_subscribe_message(subscribe_t *subscribe_message) {
-    if (!subscribe_message)
-        return;
-    if (subscribe_message -> server_message)
-        delete_server_message(subscribe_message -> server_message);
-    free(subscribe_message);
 }
