@@ -8,6 +8,46 @@
 // Port défini par le sujet
 #define PORT 7777
 
+// poste un billet sur le serveur renvoie 0 en cas de succès, 1 sinon
+int poster_billet(int sock, int id, int numfil, char *data, int datalen){
+    // on crée le billet
+    billet_t *billet = create_billet(2, id, numfil, 0, datalen, data);
+    if(billet == NULL){
+        perror("Erreur création billet");
+        return 1;
+    }
+
+    // on envoie le billet
+    if(send_billet(sock, billet) != 0){
+        perror("Erreur envoi billet");
+        return 1;
+    }
+
+    // message du serveur
+
+    return 0;
+}
+
+// demander la liste des n derniers billets
+int demander_billets(int sock, int id, int numfil, int n){
+    // on crée le billet
+    billet_t *billet = create_billet(3, id, numfil, n, 0, "");
+    if(billet == NULL){
+        perror("Erreur création billet");
+        return 1;
+    }
+
+    // on envoie le billet
+    if(send_billet(sock, billet) != 0){
+        perror("Erreur envoi billet");
+        return 1;
+    }
+
+    // message du serveur
+
+    return 0;    
+}
+
 int main(void) {
     // on crée la socket client
     int sock = socket(PF_INET, SOCK_STREAM, 0);
