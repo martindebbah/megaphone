@@ -24,6 +24,10 @@ int poster_billet(int sock, int id, int numfil, char *data, int datalen){
     }
 
     // message du serveur
+    server_message_t *mes = read_server_message(sock);
+
+    printf("Code requête : %d\n", mes -> codereq);
+    printf("Id : %d\n", mes -> id);
 
     return 0;
 }
@@ -44,6 +48,13 @@ int demander_billets(int sock, int id, int numfil, int n){
     }
 
     // message du serveur
+    server_message_t *mes = read_server_message(sock);
+
+    printf("%d, %d, %d\n", billet->codereq, billet->id, billet->numfil);
+
+    /*for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
+        post_t posts;
+    }*/
 
     return 0;    
 }
@@ -76,8 +87,25 @@ int main(void) {
     }
 
     // inscription
-    new_client_t *new_client = create_new_client("Martin");
-    delete_new_client(new_client);
+    /*new_client_t *new_client = create_new_client("Martin");
+    send_new_client(sock, new_client);
+
+    server_message_t *mes = read_server_message(sock);
+    printf("codereq : %d\n", mes->codereq);
+    printf("id : %d\n", mes->id);
+    delete_new_client(new_client);*/
+
+    /*int p = poster_billet(sock, 37, 1, "Bonjour", 7);
+    if(p != 0){
+        perror("post billet");
+        exit(1);
+    }*/
+
+    int d = demander_billets(sock, 37, 1, 1);
+    if(d != 0){
+        perror("demande billet");
+        exit(1);
+    }
 
     close(sock);
     // `echo $?` pour valeur de retour

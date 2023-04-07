@@ -86,7 +86,7 @@ void delete_new_client(new_client_t *new_client) {
         free(new_client);
 }
 
-client_message_t *create_client_client_message(int codereq, int id, int numfil, int nb, int datalen, char *data) {
+client_message_t *create_client_message(int codereq, int id, int numfil, int nb, int datalen, char *data) {
     client_message_t *client_message = calloc(1, sizeof(client_message_t));
     if (!client_message) {
         perror("alloc client_message");
