@@ -8,9 +8,59 @@
 // Port défini par le sujet
 #define PORT 7777
 
+// Identifiant de l'utilisateur
+static int id = -1;
+
 int main(void) {
-    // inscription
-    int id = inscription("Martin");
+    char *ans = calloc(10, 1);
+    int notLogged = 1;
+    while (notLogged) { // Boucle tant que pas d'identitfiant
+        printf("Êtes-vous déjà inscrit ? (o/n)\n");
+        int nread = read(0, ans, 10);
+        if (nread == -1) {
+            perror("Erreur read demande inscription");
+            goto error;
+        }
+
+        if (ans[0] == 'o') { // Déjà inscrit
+            int idNotValid = 1;
+            while (idNotValid) { // Boucle tant que l'id n'est pas un entier
+                printf("Veuillez entrer votre identifiant\n");
+                nread = read(0, ans, 10);
+                if (nread == -1) {
+                    perror("Erreur read identifiant");
+                    goto error;
+                }
+
+                char *endptr;
+                id = strtol(ans, &endptr, 10);
+
+                if (endptr == ans || id < 0) { // Valeur invalide
+                    printf("L'identifiant n'est pas valide, un entier positif est attendu\n");
+                }else {
+                    idNotValid = 0;
+                    notLogged = 0;
+                }
+            }
+            notLogged = 0;
+        }else if (ans[0] == 'n') { // Pas encore inscrit
+            printf("Veuillez entrer votre pseudo\n");
+            nread = read(0, ans, 10);
+            if (nread == -1) {
+                perror("Erreur read pseudo");
+                goto error;
+            }
+
+            id = 1;
+            // id = inscription(ans);
+            notLogged = 0;
+        }else { // Ni `o` ni `n`
+            printf("Veuillez entrer `o` pour oui ou `n` pour non\n");
+        }
+    }
+
+    free(ans);
+
     if (id == -1)
         exit(1);
 
@@ -18,9 +68,14 @@ int main(void) {
 
     // `echo $?` pour valeur de retour
     exit(0);
+
+    error:
+        if (ans)
+            free(ans);
+        return 1;
 }
 
-int connect_to_server() {
+int connect_to_server(void) {
     // on crée la socket client
     int sock = socket(PF_INET, SOCK_STREAM, 0);
     if(sock < 0){
@@ -28,8 +83,8 @@ int connect_to_server() {
         return -1;
     }
     struct sockaddr_in addr;
-
     memset(&addr, 0, sizeof(addr));
+
     // En IPv4 du coup
     addr.sin_family = AF_INET;
     // On transforme en big endian le numéro du port
@@ -53,13 +108,18 @@ int connect_to_server() {
 }
 
 int inscription(char *pseudo) {
+    // Initialisation des pointeurs
+    new_client_t *new_client = NULL;
+    int sock = -1;
+    server_message_t *server_message = NULL;
+
     // Création de la struct new_client avec le pseudo donné
-    new_client_t *new_client = create_new_client(pseudo);
+    new_client = create_new_client(pseudo);
     if (!new_client)
         goto error;
     
     // Connection au serveur
-    int sock = connect_to_server();
+    sock = connect_to_server();
     if (sock < 0)
         goto error;
     
@@ -68,12 +128,14 @@ int inscription(char *pseudo) {
         goto error;
 
     // Lecture de la réponse du serveur
-    server_message_t *server_message = read_server_message(sock);
+    server_message = read_server_message(sock);
     if (!server_message)
         goto error;
 
+    // TODO: Ajouter une condition pour CODEREQ = 31
+
     // Si le serveur renvoie une erreur
-    if (server_message -> codereq == 31)
+    if (server_message -> codereq != 1)
         goto error;
 
     // Sauvegarde de l'id envoyé par le serveur

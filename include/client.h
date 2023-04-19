@@ -2,7 +2,7 @@
 #define CLIENT_H
 
 // Crée une connexion avec le serveur et renvoie la socket associée (-1 en cas d'erreur)
-int connect_to_server();
+int connect_to_server(void);
 
 // Envoie une requête d'inscription pour le pseudo donné.
 // Retourne l'id attribué par le serveur en cas de succès, -1 sinon.
