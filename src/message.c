@@ -81,12 +81,39 @@ int send_new_client(int fd, new_client_t *new_client) {
     return 0;
 }
 
+new_client_t *read_to_new_client(char *data) {
+    new_client_t *new_client = calloc(1, sizeof(new_client_t));
+    if (!new_client) {
+        perror("Erreur alloc new_client");
+        goto error;
+    }
+
+    // Penser à la gestion d'erreur si message mal formatté
+
+    uint16_t header = 0;
+	memmove(&header, &data[0], 2);
+	// Récupération du CODEREQ
+	new_client -> codereq = ntohs(header) & 0x1F;
+    // Récupération de l'ID
+    new_client -> id = ntohs(header) >> 5;
+
+    // Récupération du pseudo
+    memmove(&(new_client -> pseudo), &data[2], 10);
+
+    return new_client;
+
+    error:
+        if (new_client)
+            delete_new_client(new_client);
+        return NULL;
+}
+
 void delete_new_client(new_client_t *new_client) {
     if (new_client)
         free(new_client);
 }
 
-client_message_t *create_client_client_message(int codereq, int id, int numfil, int nb, int datalen, char *data) {
+client_message_t *create_client_message(int codereq, int id, int numfil, int nb, int datalen, char *data) {
     client_message_t *client_message = calloc(1, sizeof(client_message_t));
     if (!client_message) {
         perror("alloc client_message");
@@ -119,9 +146,9 @@ int send_client_message(int fd, client_message_t *client_message) {
     // Mise au format big-endian de l'en-tête
     uint16_t header = create_header(client_message -> codereq, client_message -> id);
     // Mise au format big-endian de NUMFIL
-    uint16_t numfil = htons( client_message -> numfil);
+    uint16_t numfil = htons(client_message -> numfil);
     // Mise au format big-endian de NB
-    uint16_t nb = htons( client_message -> nb);
+    uint16_t nb = htons(client_message -> nb);
 
     // Copie du client_message dans un tableau de char
     char data[7 + client_message -> datalen];
@@ -167,9 +194,9 @@ int send_server_message(int fd, server_message_t *server_message) {
     // Mise au format big-endian de l'en-tête
 	uint16_t header = create_header(server_message -> codereq, server_message -> id);
     // Mise au format big-endian de NUMFIL
-	uint16_t numfil = htons( server_message -> numfil);
+	uint16_t numfil = htons(server_message -> numfil);
     // Mise au format big-endian de NB
-	uint16_t nb = htons( server_message -> nb);
+	uint16_t nb = htons(server_message -> nb);
 
     // Copie du message dans un tableau de char
 	char data[6];
