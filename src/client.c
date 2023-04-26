@@ -52,9 +52,14 @@ int demander_billets(int sock, int id, int numfil, int n){
 
     printf("%d, %d, %d\n", billet->codereq, billet->id, billet->numfil);
 
-    /*for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
-        post_t posts;
-    }*/
+    for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
+        post_t *posts = read_post(sock);
+        printf("Num fil : %d\n", posts->numfil);
+        printf("Origine : %s\n", posts->origin);
+        printf("Pseudo : %s\n", posts->pseudo);
+        printf("Billet : %s\n", posts->data);
+        delete_post(posts);
+    }
 
     return 0;    
 }

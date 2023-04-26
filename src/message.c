@@ -219,6 +219,48 @@ void delete_server_message(server_message_t *server_message) {
 	    free(server_message);
 }
 
+post_t *read_post(int sock){
+    post_t *posts = calloc(1, sizeof(post_t));
+    if (!posts) {
+        perror("calloc post");
+        if (posts)
+            delete_post(posts);
+        return NULL;
+    }
+
+    char data[23] = {0};
+
+    if(read(sock, data, 23) < 0){
+        perror("read");
+        return NULL;
+    }
+
+    memmove(&(posts->numfil), &data[0], 2);
+    posts->numfil = ntohs(posts->numfil);
+
+    memmove(posts->origin, &data[2], 10);
+    posts->origin[10] = 0;
+    memmove(posts->pseudo, &data[12], 10);
+    posts->pseudo[10] = 0;
+    memmove(&(posts->datalen), &data[22], 1);
+        
+    char mes[posts->datalen];
+    if(read(sock, mes, posts->datalen) < 0){
+        perror("read");
+        return NULL;
+    }
+
+    posts->data = malloc(posts->datalen + 1);
+    memmove(posts->data, &mes[0], posts->datalen);
+
+    return posts;
+}
+
+void delete_post(post_t *posts) {
+    free(posts->data);
+    free(posts);
+}
+
 subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int addrmult) {
     subscribe_t *subscribe_message = calloc(1, sizeof(subscribe_t));
     if (!subscribe_message) {

@@ -45,8 +45,8 @@ typedef struct subscribe_t {
 // Représente le format d'un billet à renvoyer (server_message_t.nb fois ce message)
 typedef struct post_t {
 	uint16_t numfil;
-	char origin[10];
-	char pseudo[10];
+	char origin[11];
+	char pseudo[11];
 	uint8_t datalen;
     char *data;
 } post_t;
@@ -108,6 +108,12 @@ server_message_t *read_server_message(int fd);
 
 // Libère la mémoire allouée pour un message serveur
 void delete_server_message(server_message_t *server_message);
+
+// Lit les billets envoyés par le serveur
+post_t *read_post(int fd);
+
+// Libère la mémoire allouée pour un billet
+void delete_post(post_t *post);
 
 subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int addrmult);
 // codereq peut être inutile puisque toujours égal à 4
