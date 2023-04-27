@@ -14,5 +14,6 @@
 
 #include "message.h"
 #include "server.h"
+#include "client.h"
 
 #endif
