@@ -6,7 +6,6 @@ int main(void) {
 	// Initialisation des variables
 	create_register();
 	int server_sock = -1;
-	int client_sock = -1;
 
 	// Socket
 	server_sock = socket(PF_INET, SOCK_STREAM, 0);
@@ -31,9 +30,7 @@ int main(void) {
 		perror("Erreur bind socket");
 		goto error;
 	}
-
-	// while (1) {
-
+	
 	// Listen
 	int l = listen(server_sock, 0);
 	if (l == -1) {
@@ -41,65 +38,34 @@ int main(void) {
 		goto error;
 	}
 
-	// Accept
-	client_sock = accept(server_sock, NULL, NULL);
-	if (client_sock == -1) {
-		perror("Erreur accept");
-		goto error;
-		// Peut-être juste skip et attendre le prochain accept
-	}
-
-	// Recv
-	char data[12] = {0};
-	int nread = read(client_sock, data, 12); // Lire plus
-	if (nread < 0) {
-		perror("Erreur read");
-		goto error;
-	}
-
-	uint16_t header = 0;
-	memmove(&header, &data[0], 2);
-	// Récupération du CODEREQ
-	int codereq = ntohs(header) & 0x1F;
-
-	// On gère la requête en fonction de son code
-	switch (codereq) {
-		case 1: { // Inscription
-			new_client_t *new_client = read_to_new_client(data);
-			if (!new_client)
-				goto error;
-			printf("CODEREQ = %d | ID = %d | Pseudo = %s\n", new_client -> codereq, new_client -> id, new_client -> pseudo);
-			delete_new_client(new_client);
-			break;
+	while (1) {
+		// Accept
+		int *client_sock = calloc(1, sizeof(int));
+		*client_sock = accept(server_sock, NULL, NULL);
+		if (*client_sock == -1) {
+			perror("Erreur accept");
+			goto error;
+			// Peut-être juste skip et attendre le prochain accept
 		}
-		case 2: // Poster un billet
-			break;
-		case 3: // Liste des n derniers billets
-			break;
-		case 4: // Abonnement à un fil
-			break;
-		case 5: // Ajouter un fichier
-			break;
-		case 6: // Télécharger un fichier
-			break;
+
+		// Création thread
+		pthread_t thread;
+		if (pthread_create(&thread, NULL, serve, client_sock) == -1) {
+			perror("Erreur pthread_create");
+			continue;
+		}
+
+		// Fermeture des processus fils terminés
 	}
-	printf("CODEREQ = %d\n", codereq);
-
-	// Send
-
-	// } // Fin while true
 
 	// Close
 	close (server_sock);
-	close (client_sock);
 	delete_register();
 	return 0;
 
 	error:
 		if (server_sock != -1)
 			close(server_sock);
-		if (client_sock != -1)
-			close(client_sock);
 		delete_register();
 		return 1;
 }
@@ -114,23 +80,30 @@ void create_register(void) {
 	users_reg -> new_id = 1;
 }
 
-void add_user(char *pseudo) {
+int add_user(char *pseudo) {
+	// Verrou
+
 	// Réallocation du tableau pour admettre un nouvel utilisateur
 	char **new_users = realloc(users_reg -> users, users_reg -> new_id * sizeof(char *));
 	if (new_users == NULL) {
 		perror("Erreur ajout user");
-		return;
+		return -1;
 	}
 	users_reg -> users = new_users;
 	// Insertion du pseudo à la position ID - 1
 	users_reg -> users[users_reg -> new_id - 1] = calloc(11, 1);
 	if (!users_reg -> users[users_reg -> new_id - 1]) {
 		perror("Erreur alloc new user");
-		return;
+		return -1;
 	}
 	memmove(users_reg -> users[users_reg -> new_id - 1], pseudo, 10);
 	// Incrémentation de l'ID
-	users_reg -> new_id++;
+	int id = users_reg -> new_id;
+	users_reg -> new_id = id + 1;
+	
+	// Fin verrou
+
+	return id;
 }
 
 char *get_user(int id) {
@@ -156,4 +129,72 @@ void delete_register(void) {
 		free(users_reg -> users);
 	}
 	free(users_reg);
+}
+
+int register_new_client(int sock, char *data) {
+	new_client_t *new_client = NULL;
+	server_message_t *server_message = NULL;
+	new_client = read_to_new_client(data);
+	if (!new_client) {
+		perror("Erreur lecture new_client");
+		goto error;
+	}
+	int id = add_user(new_client -> pseudo);
+	if (id == -1) {
+		perror("Erreur ajout utilisateur");
+		goto error;
+	}
+	server_message = create_server_message(1, id, 0, 0);
+	if (!server_message) {
+		perror("Erreur création server_message");
+		goto error;
+	}
+
+	send_server_message(sock, server_message);
+
+	delete_new_client(new_client);
+	delete_server_message(server_message);
+	return 0;
+
+	error:
+		if (new_client)
+			delete_new_client(new_client);
+		if (server_message)
+			delete_server_message(server_message);
+		return 1;
+}
+
+void *serve(void *arg) {
+	int sock = *((int *) arg);
+	// Recv
+	char data[12] = {0};
+	if (recv(sock, data, 12, 0) < 0) { // Lire plus
+		perror("Erreur recv");
+		close(sock);
+		return NULL;
+	}
+
+	uint16_t header = 0;
+	memmove(&header, &data[0], 2);
+	// Récupération du CODEREQ
+	int codereq = ntohs(header) & 0x1F;
+
+	// On gère la requête en fonction de son code
+	switch (codereq) {
+		case 1: // Inscription
+			register_new_client(sock, data);
+			break;
+		case 2: // Poster un billet
+			break;
+		case 3: // Liste des n derniers billets
+			break;
+		case 4: // Abonnement à un fil
+			break;
+		case 5: // Ajouter un fichier
+			break;
+		case 6: // Télécharger un fichier
+			break;
+	}
+	close(sock);
+	return NULL;
 }

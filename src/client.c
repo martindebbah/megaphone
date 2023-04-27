@@ -80,6 +80,12 @@ int main(void) {
     send_new_client(sock, new_client);
     delete_new_client(new_client);
 
+    server_message_t *s = read_server_message(sock);
+    printf("CODEREQ: %d\n", s -> codereq);
+    printf("ID: %d\n", s -> id);
+    printf("NUMFIL: %d\n", s -> numfil);
+    printf("NB: %d\n", s -> nb);
+    delete_server_message(s);
     close(sock);
     // `echo $?` pour valeur de retour
     exit(0);

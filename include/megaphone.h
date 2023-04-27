@@ -11,6 +11,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 
 #include "message.h"
 #include "server.h"
