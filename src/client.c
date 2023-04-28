@@ -51,7 +51,7 @@
 int main(void) {
     // on crée la socket client
     int sock = socket(PF_INET, SOCK_STREAM, 0);
-    if(sock < 0){
+    if (sock < 0){
         perror("Erreur socket");
         exit(1);
     }

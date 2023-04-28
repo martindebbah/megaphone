@@ -1,11 +1,21 @@
 #include "../include/megaphone.h"
 
-static users_register_t *users_reg;
+#define NTHREADS 10
+
+static users_register_t *users_reg = NULL;
+static pthread_mutex_t reg_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int server_sock = -1;
 
 int main(void) {
-	// Initialisation des variables
+	// Initialisation du registre
 	create_register();
-	int server_sock = -1;
+	if (!users_reg)
+		exit(1);
+
+	// Mise en place sigaction pour fermeture propre du serveur
+	struct sigaction action = {0};
+	action.sa_handler = handler;
+	sigaction(SIGINT, &action, NULL);
 
 	// Socket
 	server_sock = socket(PF_INET, SOCK_STREAM, 0);
@@ -38,27 +48,57 @@ int main(void) {
 		goto error;
 	}
 
+	pthread_t threads[NTHREADS];
+	int *client_sock[NTHREADS] = {NULL};
 	while (1) {
 		// Accept
-		int *client_sock = calloc(1, sizeof(int));
-		*client_sock = accept(server_sock, NULL, NULL);
-		if (*client_sock == -1) {
-			perror("Erreur accept");
-			goto error;
-			// Peut-être juste skip et attendre le prochain accept
+		int sock = accept(server_sock, NULL, NULL);
+		if (sock == -1) {
+			// Fermeture du serveur
+			break;
 		}
 
-		// Création thread
-		pthread_t thread;
-		if (pthread_create(&thread, NULL, serve, client_sock) == -1) {
-			perror("Erreur pthread_create");
-			continue;
+		int i = 0;
+		// On cherche un thread libre
+		for (; i < NTHREADS; i++) {
+			// Si un thread est terminé (que son socket client associé est NULL ou égal à -1)
+			if (!client_sock[i] || *client_sock[i] == -1) {
+				// Si le thread i n'existait pas
+				if (!client_sock[i])
+					client_sock[i] = calloc(1, sizeof(int));
+				else // Le thread existait, on le join
+					pthread_join(threads[i], NULL);
+
+				// Copie du sock client sur le tas
+				memmove(client_sock[i], &sock, sizeof(int));
+
+				// Création thread
+				if (pthread_create(&threads[i], NULL, serve, client_sock[i]) == -1) {
+					perror("Erreur pthread_create");
+					close(*client_sock[i]);
+					free(client_sock[i]);
+				}
+				break;
+			}
 		}
 
-		// Fermeture des processus fils terminés
+		 // Pas de thread disponible
+		if (i == NTHREADS) {
+			close(sock);
+		}
 	}
 
-	// Close
+	// Join tous les threads restants
+	for (int i = 0; i < NTHREADS; i++) {
+		if (client_sock[i]) {
+			pthread_join(threads[i], NULL);
+			if (*client_sock[i] != -1)
+				close(*client_sock[i]);
+			free(client_sock[i]);
+		}
+	}
+
+	// Libération des ressources
 	close (server_sock);
 	delete_register();
 	return 0;
@@ -76,44 +116,57 @@ void create_register(void) {
 		perror("Erreur création registre d'utilisateurs");
 		return;
 	}
+
+	// Initialisation
 	users_reg -> users = NULL;
 	users_reg -> new_id = 1;
 }
 
 int add_user(char *pseudo) {
-	// Verrou
+	// Verrouillage zone critique
+	pthread_mutex_lock(&reg_mutex);
 
 	// Réallocation du tableau pour admettre un nouvel utilisateur
 	char **new_users = realloc(users_reg -> users, users_reg -> new_id * sizeof(char *));
-	if (new_users == NULL) {
+	if (!new_users) {
 		perror("Erreur ajout user");
+		pthread_mutex_unlock(&reg_mutex);
 		return -1;
 	}
 	users_reg -> users = new_users;
+
 	// Insertion du pseudo à la position ID - 1
 	users_reg -> users[users_reg -> new_id - 1] = calloc(11, 1);
 	if (!users_reg -> users[users_reg -> new_id - 1]) {
 		perror("Erreur alloc new user");
+		pthread_mutex_unlock(&reg_mutex);
 		return -1;
 	}
+
+	// Copie du pseudo dans le registre
 	memmove(users_reg -> users[users_reg -> new_id - 1], pseudo, 10);
 	// Incrémentation de l'ID
 	int id = users_reg -> new_id;
 	users_reg -> new_id = id + 1;
 	
-	// Fin verrou
+	// Déverrouillage zone critique
+	pthread_mutex_unlock(&reg_mutex);
 
 	return id;
 }
 
 char *get_user(int id) {
-	if (id < 1 || id >= users_reg -> new_id)
+	// Critique ?
+	// Si l'ID n'est pas valide
+	if (!users_reg || id < 1 || id >= users_reg -> new_id)
 		return NULL;
+
 	char *pseudo = calloc(11, 1);
 	if (!pseudo) {
 		perror("Erreur alloc get_user");
 		return NULL;
 	}
+
 	// ID à la position ID - 1
 	memmove(pseudo, users_reg -> users[id - 1], 10);
 	return pseudo;
@@ -134,24 +187,32 @@ void delete_register(void) {
 int register_new_client(int sock, char *data) {
 	new_client_t *new_client = NULL;
 	server_message_t *server_message = NULL;
+
+	// Conversion de `data` en `struct new_client_t`
 	new_client = read_to_new_client(data);
 	if (!new_client) {
 		perror("Erreur lecture new_client");
 		goto error;
 	}
+
+	// Ajout de l'utilisateur dans le registre
 	int id = add_user(new_client -> pseudo);
 	if (id == -1) {
 		perror("Erreur ajout utilisateur");
 		goto error;
 	}
+
+	// Création du message de réponse
 	server_message = create_server_message(1, id, 0, 0);
 	if (!server_message) {
 		perror("Erreur création server_message");
 		goto error;
 	}
 
+	// Envoi du message de réponse
 	send_server_message(sock, server_message);
 
+	// Libération des ressources
 	delete_new_client(new_client);
 	delete_server_message(server_message);
 	return 0;
@@ -195,6 +256,16 @@ void *serve(void *arg) {
 		case 6: // Télécharger un fichier
 			break;
 	}
+	// Fermeture socket client
 	close(sock);
+	// Réécriture du tas pour réutilisabilité du thread
+	int closed = -1;
+	memmove(arg, &closed, sizeof(int));
 	return NULL;
+}
+
+void handler(int sig) {
+	// Fermeture du socket du serveur pour débloquer l'état `accept()`
+	if (server_sock != -1)
+		close(server_sock);
 }
