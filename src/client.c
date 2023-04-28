@@ -8,6 +8,9 @@
 // Port défini par le sujet
 #define PORT 7777
 
+// Taille maximale d'un post
+#define MAX_MESSAGE_SIZE 50
+
 // Identifiant de l'utilisateur
 static int id = -1;
 
@@ -51,20 +54,45 @@ int main(void) {
                 goto error;
             }
 
-            id = 1;
-            // id = inscription(ans);
+            id = inscription(ans);
             notLogged = 0;
         }else { // Ni `o` ni `n`
             printf("Veuillez entrer `o` pour oui ou `n` pour non\n");
         }
     }
 
-    free(ans);
-
     if (id == -1)
         exit(1);
 
     printf("Votre numéro d'identification est: %d\n", id);
+
+    int action = 1;
+    printf("Que voulez-vous faire ?\n");
+    printf("1. Poster un billet (p)\n");
+    printf("2. Lister les n derniers billets (l)\n");
+    while(action){
+        int nread = read(0, ans, 10);
+        if (nread == -1) {
+            perror("Erreur read action");
+            goto error;
+        }
+
+        if (ans[0] == 'p') {
+            action = 0;
+            int p = poster_billet(id);
+            if(p == -1){
+                perror("Erreur lors de l'envoi du billet");
+                goto error;
+            }
+        }else if (ans[0] == 'l') {
+            action = 0;
+            //int l = demander_billets(id);
+        }else {
+            printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
+        }
+    }
+
+    free(ans);
 
     // `echo $?` pour valeur de retour
     exit(0);
@@ -159,18 +187,58 @@ int inscription(char *pseudo) {
         return -1;
 }
 
-int poster_billet(int sock, int id, int numfil, char *data, int datalen){
+int poster_billet(int id){
+    int sock = -1;
+    int numfil = -1;
+    int datalen = -1;
+    char *data = NULL;
+
+    int post = 1;
+    printf("Veuillez entrer le numéro du fil.\n");
+    while(post){
+        scanf("%d", &numfil);
+        if (numfil < 0)
+            printf("Veuillez entrer un entier positif !\n");
+        else
+            post = 0;
+    }
+    post = 1;
+    printf("Veuillez entrer le message à poster.\n");
+    while(post){
+        int nread = read(0, data, MAX_MESSAGE_SIZE);
+        if (nread == -1) {
+            perror("Erreur read message");
+            return -1;
+        }
+
+        if (nread > MAX_MESSAGE_SIZE) {
+            printf("Veuillez entrer un message de moins de %d caractères\n", MAX_MESSAGE_SIZE);
+        }
+        else {
+            datalen = nread;
+            data[nread] = 0;
+            post = 0;
+        }
+    }
+
+    // on crée la socket client
+    sock = connect_to_server();
+    if(sock < 0){
+        perror("Erreur socket");
+        return -1;
+    }
+
     // on crée le billet
     client_message_t *billet = create_client_message(2, id, numfil, 0, datalen, data);
     if(billet == NULL){
         perror("Erreur création billet");
-        return 1;
+        return -1;
     }
 
     // on envoie le billet
     if(send_client_message(sock, billet) != 0){
         perror("Erreur envoi billet");
-        return 1;
+        return -1;
     }
 
     // message du serveur
@@ -178,22 +246,37 @@ int poster_billet(int sock, int id, int numfil, char *data, int datalen){
 
     printf("Code requête : %d\n", mes -> codereq);
     printf("Id : %d\n", mes -> id);
+    if(mes -> codereq != 34){
+        printf("Message posté !\n");
+    }
+    else{
+        printf("Erreur lors de l'envoi du message\n");
+    }
+
+    delete_client_message(billet);
+    delete_server_message(mes);
+    close(sock);
 
     return 0;
 }
 
-int demander_billets(int sock, int id, int numfil, int n){
+int demander_billets(int id){
+    int sock = -1;
+    int numfil = -1;
+    int n_billets = -1;
+
+
     // on crée le billet
-    client_message_t *billet = create_client_message(3, id, numfil, n, 0, "");
+    client_message_t *billet = create_client_message(3, id, numfil, n_billets, 0, "");
     if(billet == NULL){
         perror("Erreur création billet");
-        return 1;
+        return -1;
     }
 
     // on envoie le billet
     if(send_client_message(sock, billet) != 0){
         perror("Erreur envoi billet");
-        return 1;
+        return -1;
     }
 
     // message du serveur

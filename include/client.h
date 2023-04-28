@@ -8,10 +8,10 @@ int connect_to_server(void);
 // Retourne l'id attribué par le serveur en cas de succès, -1 sinon.
 int inscription(char *pseudo);
 
-// Poste un billet sur le serveur renvoie 0 en cas de succès, 1 sinon
-int poster_billet(int sock, int id, int numfil, char *data, int datalen);
+// Poste un billet sur le serveur renvoie 0 en cas de succès, -1 sinon
+int poster_billet(int id);
 
 // Demander la liste des n derniers billets
-int demander_billets(int sock, int id, int numfil, int n);
+int demander_billets(int id);
 
 #endif
