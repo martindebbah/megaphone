@@ -7,7 +7,7 @@
 #define PORT 30000
 
 // Taille maximale d'un post
-#define MAX_MESSAGE_SIZE 50
+#define MAX_MESSAGE_SIZE 256
 
 // Identifiant de l'utilisateur
 static int id = -1;
@@ -248,7 +248,7 @@ int poster_billet(int id){
 
     printf("Code requête : %d\n", mes -> codereq);
     printf("Id : %d\n", mes -> id);
-    if(mes -> codereq != 34){
+    if(mes -> codereq != 31){
         printf("Message posté !\n");
     }
     else{

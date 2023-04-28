@@ -6,6 +6,22 @@ typedef struct users_register_t {
 	int new_id;
 } users_register_t;
 
+typedef struct stack_post_t {
+	post_t *post;
+	stack_post_t *next;
+} stack_post_t;
+
+typedef struct msg_thread_t {
+	int nb_msg;
+	char pseudo_init[10];
+	stack_post_t *posts;
+} msg_thread_t;
+
+typedef struct msg_threads_register_t {
+	msg_thread_t **msg_threads;
+	int nb_fils;
+} msg_threads_register_t;
+
 // Alloue la mémoire nécessaire et initialise un registre vide
 void create_register(void);
 
@@ -26,5 +42,23 @@ void *serve(void *arg);
 
 // Gère le signal SIGINT pour fermeture propre du serveur
 void handler(int sig);
+
+// Créer une pile de posts vide
+stack_post_t *create_stack_post(void);
+
+// Ajoute un post à la pile
+void push_post(stack_post_t *stack_post, post_t *post);
+
+// Libère la mémoire allouée pour la pile
+void delete_stack_post(stack_post_t *stack_post);
+
+// Créer un registre de fils vide
+msg_threads_register_t *create_msg_threads_register(void);
+
+// Ajoute un fil au registre
+void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread);
+
+// Libère la mémoire allouée pour le registre
+void delete_msg_threads_register(msg_threads_register_t *msg_threads_register);
 
 #endif

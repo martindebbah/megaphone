@@ -269,3 +269,37 @@ void handler(int sig) {
 	if (server_sock != -1)
 		close(server_sock);
 }
+
+stack_post_t *create_stack_post(void){
+	stack_post_t *stack = calloc(1, sizeof(stack_post_t));
+	if (!stack) {
+		perror("Erreur création stack");
+		return NULL;
+	}
+
+	stack -> post = NULL;
+	stack -> next = NULL;
+	return stack;
+}
+
+void push_post(stack_post_t *stack_post, post_t *post){
+	if (!stack_post || !post)
+		return;
+
+	stack_post_t *new_stack = create_stack_post();
+	if (!new_stack)
+		return;
+
+	new_stack -> post = post;
+	new_stack -> next = stack_post;
+	stack_post = new_stack;
+}
+
+void delete_stack_post(stack_post_t *stack) {
+	if (!stack)
+		return;
+	if (stack -> post)
+		delete_post(stack -> post);
+	delete_stack_post(stack -> next);
+	free(stack);
+}
