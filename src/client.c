@@ -191,7 +191,7 @@ int poster_billet(int id){
     int sock = -1;
     int numfil = -1;
     int datalen = -1;
-    char *data = NULL;
+    char *data = malloc(sizeof(char) * (MAX_MESSAGE_SIZE + 1));
 
     int post = 1;
     printf("Veuillez entrer le numéro du fil.\n");
@@ -253,6 +253,7 @@ int poster_billet(int id){
         printf("Erreur lors de l'envoi du message\n");
     }
 
+    free(data);
     delete_client_message(billet);
     delete_server_message(mes);
     close(sock);
