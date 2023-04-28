@@ -1,27 +1,5 @@
 #include "../include/megaphone.h"
 
-// Affiche deux octets (de gauche à droite: poids fort -> poids faible)
-void print(uint16_t t) { // A retirer
-    for (int i = 15; i >= 0; i--) {
-        if (t & (1 << i))
-            printf("1");
-        else
-            printf("0");
-    }
-    printf("\n");
-}
-
-// Affiche un octet (de gauche à droite: poids fort -> poids faible)
-void print_8(uint8_t t) { // A retirer
-    for (int i = 7; i >= 0; i--) {
-        if (t & (1 << i))
-            printf("1");
-        else
-            printf("0");
-    }
-    printf("\n");
-}
-
 uint16_t create_header(int codereq, int id) {
     // Initialisation des bits de l'en-tête à 0
     uint16_t header = 0;
@@ -73,12 +51,39 @@ int send_new_client(int fd, new_client_t *new_client) {
     memmove(&data[2], &(new_client -> pseudo), 10);
 
     // Envoi du tableau
-    if (write(fd, data, 12) < 0) {
+    if (send(fd, data, 12, 0) < 0) {
         perror("write new_client");
         return 1;
     }
 
     return 0;
+}
+
+new_client_t *read_to_new_client(char *data) {
+    new_client_t *new_client = calloc(1, sizeof(new_client_t));
+    if (!new_client) {
+        perror("Erreur alloc new_client");
+        goto error;
+    }
+
+    // Penser à la gestion d'erreur si message mal formatté
+
+    uint16_t header = 0;
+	memmove(&header, &data[0], 2);
+	// Récupération du CODEREQ
+	new_client -> codereq = ntohs(header) & 0x1F;
+    // Récupération de l'ID
+    new_client -> id = ntohs(header) >> 5;
+
+    // Récupération du pseudo
+    memmove(&(new_client -> pseudo), &data[2], 10);
+
+    return new_client;
+
+    error:
+        if (new_client)
+            delete_new_client(new_client);
+        return NULL;
 }
 
 void delete_new_client(new_client_t *new_client) {
@@ -119,9 +124,9 @@ int send_client_message(int fd, client_message_t *client_message) {
     // Mise au format big-endian de l'en-tête
     uint16_t header = create_header(client_message -> codereq, client_message -> id);
     // Mise au format big-endian de NUMFIL
-    uint16_t numfil = htons( client_message -> numfil);
+    uint16_t numfil = htons(client_message -> numfil);
     // Mise au format big-endian de NB
-    uint16_t nb = htons( client_message -> nb);
+    uint16_t nb = htons(client_message -> nb);
 
     // Copie du client_message dans un tableau de char
     char data[7 + client_message -> datalen];
@@ -132,7 +137,7 @@ int send_client_message(int fd, client_message_t *client_message) {
     memmove(&data[7], client_message -> data, client_message -> datalen);
 
     // Envoi du tableau
-    if (write(fd, data, 7 + client_message -> datalen) < 0) {
+    if (send(fd, data, 7 + client_message -> datalen, 0) < 0) {
         perror("write client_message");
         return 1;
     }
@@ -167,19 +172,19 @@ int send_server_message(int fd, server_message_t *server_message) {
     // Mise au format big-endian de l'en-tête
 	uint16_t header = create_header(server_message -> codereq, server_message -> id);
     // Mise au format big-endian de NUMFIL
-	uint16_t numfil = htons( server_message -> numfil);
+	uint16_t numfil = htons(server_message -> numfil);
     // Mise au format big-endian de NB
-	uint16_t nb = htons( server_message -> nb);
+	uint16_t nb = htons(server_message -> nb);
 
     // Copie du message dans un tableau de char
 	char data[6];
 	memmove(&data[0], &header, 2);
     memmove(&data[2], &numfil, 2);
-	memmove(&data[2], &nb, 2);
+	memmove(&data[4], &nb, 2);
 
 
     // Envoi du tableau
-	if (write(fd, data, 6) < 0) {
+	if (send(fd, data, 6, 0) < 0) {
 		perror("write server_message");
         return 1;
 	}
@@ -195,8 +200,8 @@ server_message_t *read_server_message(int fd) {
     }
 
     uint16_t msg[3];
-    if (read(fd, msg, 48) < 0) {
-        perror("read server message");
+    if (recv(fd, msg, 48, 0) < 0) {
+        perror("recv server message");
         goto error;
     }
 

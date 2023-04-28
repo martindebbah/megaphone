@@ -1,8 +1,6 @@
 #ifndef MESSAGE_H
 #define MESSAGE_H
 
-#include <unistd.h>
-
 // Représente le message pour un nouveau client
 typedef struct new_client_t {
     int codereq;
@@ -73,7 +71,7 @@ new_client_t *create_new_client(char *pseudo);
 int send_new_client(int fd, new_client_t *new_client);
 
 // Lit un `new client` (côté serveur)
-new_client_t *read_new_client(int fd);
+new_client_t *read_to_new_client(char *data);
 
 // Libère la mémoire allouée pour l'inscription du client
 void delete_new_client(new_client_t *new_client);
@@ -87,7 +85,7 @@ client_message_t *create_client_message(int codereq, int id, int numfil, int nb,
 int send_client_message(int fd, client_message_t *client_message);
 
 // Lit un message (côté serveur)
-client_message_t *read_client_message(int fd);
+client_message_t *read_to_client_message(char *data);
 
 // Libère la mémoire allouée pour un message client
 void delete_client_message(client_message_t *client_message);

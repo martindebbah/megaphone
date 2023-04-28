@@ -1,12 +1,10 @@
 # include "../include/megaphone.h"
 
-// Pour lancer le programme on lance `client.out`
-// Et on fait `netcat -l 7777`
+// Pour lancer le programme on lance `./client`
 
-// On travaille sur lulu
-#define ADDR "192.168.70.236"
-// Port défini par le sujet
-#define PORT 7777
+// On travaille en localhost
+#define ADDR "127.0.0.1"
+#define PORT 30000
 
 // Taille maximale d'un post
 #define MAX_MESSAGE_SIZE 50
@@ -106,7 +104,7 @@ int main(void) {
 int connect_to_server(void) {
     // on crée la socket client
     int sock = socket(PF_INET, SOCK_STREAM, 0);
-    if(sock < 0){
+    if (sock < 0){
         perror("Erreur socket");
         return -1;
     }
