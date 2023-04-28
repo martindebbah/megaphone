@@ -225,24 +225,28 @@ int poster_billet(int id){
     sock = connect_to_server();
     if(sock < 0){
         perror("Erreur socket");
-        return -1;
+        goto error;
     }
 
     // on crée le billet
     client_message_t *billet = create_client_message(2, id, numfil, 0, datalen, data);
     if(billet == NULL){
         perror("Erreur création billet");
-        return -1;
+        goto error;
     }
 
     // on envoie le billet
     if(send_client_message(sock, billet) != 0){
         perror("Erreur envoi billet");
-        return -1;
+        goto error;
     }
 
     // message du serveur
     server_message_t *mes = read_server_message(sock);
+    if(mes == NULL){
+        perror("Erreur lecture message serveur");
+        goto error;
+    }
 
     printf("Code requête : %d\n", mes -> codereq);
     printf("Id : %d\n", mes -> id);
@@ -259,6 +263,17 @@ int poster_billet(int id){
     close(sock);
 
     return 0;
+
+    error: 
+        if (data)
+            free(data);
+        if (billet)
+            delete_client_message(billet);
+        if (mes)
+            delete_server_message(mes);
+        if (sock >= 0)
+            close(sock);
+        return -1;
 }
 
 int demander_billets(int id){
@@ -266,33 +281,77 @@ int demander_billets(int id){
     int numfil = -1;
     int n_billets = -1;
 
+    int post = 1;
+    printf("Veuillez entrer le numéro du fil.\n");
+    printf("Pour demander tous les fils, entrez 0.\n");
+    while(post){
+        scanf("%d", &numfil);
+        if (numfil < 0)
+            printf("Veuillez entrer un entier positif !\n");
+        else
+            post = 0;
+    }
+    post = 1;
+    printf("Veuillez entrer le nombre de messages.\n");
+    printf("Pour demander tous les messages, entrez 0.\n");
+    while(post){
+        scanf("%d", &n_billets);
+        if (n_billets < 0)
+            printf("Veuillez entrer un entier positif !\n");
+        else
+            post = 0;
+    }
+
+    // on crée la socket client
+    sock = connect_to_server();
+    if(sock < 0){
+        perror("Erreur socket");
+        return -1;
+    }
 
     // on crée le billet
     client_message_t *billet = create_client_message(3, id, numfil, n_billets, 0, "");
     if(billet == NULL){
         perror("Erreur création billet");
-        return -1;
+        goto error;
     }
 
     // on envoie le billet
     if(send_client_message(sock, billet) != 0){
         perror("Erreur envoi billet");
-        return -1;
+        goto error;
     }
 
     // message du serveur
     server_message_t *mes = read_server_message(sock);
+    if(mes == NULL){
+        perror("Erreur lecture message");
+        goto error;
+    }
 
-    printf("%d, %d, %d\n", billet->codereq, billet->id, billet->numfil);
+    printf("Codereq : %d, Id : %d, Fil : %d\n", billet->codereq, billet->id, billet->numfil);
 
     for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
         post_t *posts = read_post(sock);
-        printf("Num fil : %d\n", posts->numfil);
+        if(posts == NULL){
+            perror("Erreur lecture billet");
+            goto error;
+        }
+        printf("Fil : %d\n", posts->numfil);
         printf("Origine : %s\n", posts->origin);
         printf("Pseudo : %s\n", posts->pseudo);
         printf("Billet : %s\n", posts->data);
         delete_post(posts);
     }
 
-    return 0;    
+    return 0;
+
+    error:
+        if (billet)
+            delete_client_message(billet);
+        if (mes)
+            delete_server_message(mes);
+        if (sock >= 0)
+            close(sock);
+        return -1;    
 }
