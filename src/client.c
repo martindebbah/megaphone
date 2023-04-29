@@ -1,15 +1,6 @@
 # include "../include/megaphone.h"
 
-// Pour lancer le programme on lance `./client`
-
-// On travaille en localhost
-#define ADDR4 "127.0.0.1"
-#define ADDR6 "::1"
-#define PORT 30000
-#define TYPE 6
-
-// Taille maximale d'un post
-#define MAX_MESSAGE_SIZE 50
+// Pour lancer le programme : `./client`
 
 // Identifiant de l'utilisateur
 static int id = -1;

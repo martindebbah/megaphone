@@ -1,9 +1,12 @@
 #include "../include/megaphone.h"
 
-#define NTHREADS 10
+// Pour lancer le programme : `./server`
 
+// Registre des utilisateurs
 static users_register_t *users_reg = NULL;
+// Mutex du registre
 static pthread_mutex_t reg_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Socket du serveur
 static int server_sock = -1;
 
 int main(void) {
@@ -17,22 +20,35 @@ int main(void) {
 	action.sa_handler = handler;
 	sigaction(SIGINT, &action, NULL);
 
-	// Socket
-	server_sock = socket(PF_INET, SOCK_STREAM, 0);
+	// Socket serveur
+	server_sock = socket(PF_INET6, SOCK_STREAM, 0);
 	if (server_sock < 0) {
 		perror("Erreur socket");
 		goto error;
 	}
-	int opt = 1;
-	setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-	struct sockaddr_in addr;
+	// Options du socket
+	// Réutilisabilité après fermeture
+	int opt_reuse = 1;
+	if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt_reuse, sizeof(opt_reuse)) < 0) {
+		perror("Erreur option socket reuse");
+		goto error;
+	}
+	// Acceptation des connexions IPv4
+	int opt_only6 = 0;
+	if (setsockopt(server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &opt_only6, sizeof(opt_only6)) < 0) {
+		perror("Erreur option socket IPv6 only");
+		goto error;
+	}
+
+	// Structure adresse IPv6
+	struct sockaddr_in6 addr;
 	memset(&addr, 0, sizeof(addr));
 
 	// IPv4 pour l'instant
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(30000);
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin6_family = AF_INET6;
+	addr.sin6_port = htons(PORT);
+	addr.sin6_addr = in6addr_any;
 
 	// Bind
 	int b = bind(server_sock, (struct sockaddr *) &addr, sizeof(addr));
