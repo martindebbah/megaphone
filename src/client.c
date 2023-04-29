@@ -3,8 +3,10 @@
 // Pour lancer le programme on lance `./client`
 
 // On travaille en localhost
-#define ADDR "127.0.0.1"
+#define ADDR4 "127.0.0.1"
+#define ADDR6 "::1"
 #define PORT 30000
+#define TYPE 6
 
 // Taille maximale d'un post
 #define MAX_MESSAGE_SIZE 50
@@ -123,31 +125,70 @@ int main(void) {
 }
 
 int connect_to_server(void) {
-    // on crée la socket client
+    if (TYPE == 4) // IPv4
+        return connect_to_server_4();
+    if (TYPE == 6) // IPv6
+        return connect_to_server_6();
+    // Erreur
+    return -1;
+}
+
+int connect_to_server_4(void) {
+    // Socket client
     int sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock < 0){
-        perror("Erreur socket");
+        perror("Erreur socket IPv4");
         return -1;
     }
+
+    // Structure adresse IPv4
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
 
-    // En IPv4 du coup
     addr.sin_family = AF_INET;
-    // On transforme en big endian le numéro du port
     addr.sin_port = htons(PORT);
 
-    // affecte à `dst` l’adresse au format réseau (entier codé en big-endian) 
-    // correspondant à l’adresse représentée par la chaîne de caractères `src`.
-    if (inet_pton(AF_INET, ADDR, &addr.sin_addr) != 1) {
+    if (inet_pton(AF_INET, ADDR4, &addr.sin_addr) != 1) {
+        perror("Erreur inet_pton IPv4");
         close(sock);
-        perror("Erreur inet_pton");
         return -1;
     }
 
+    // Connexion
     if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
+        perror("Erreur connexion IPv4");
         close(sock);
-        perror("Erreur connexion");
+        return -1;
+    }
+
+    return sock;
+}
+
+int connect_to_server_6(void) {
+    // Socket client
+    int sock = socket(PF_INET6, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("Erreur socket IPv6");
+        return -1;
+    }
+
+    // Structure adresse IPv6
+    struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
+
+    addr.sin6_family = AF_INET6;
+    addr.sin6_port = htons(PORT);
+
+    if (inet_pton(AF_INET6, ADDR6, &addr.sin6_addr) != 1) {
+        perror("Erreur inet_pton IPv6");
+        close(sock);
+        return -1;
+    }
+
+    // Connexion
+    if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
+        perror("Erreur connexion IPv6");
+        close(sock);
         return -1;
     }
 
