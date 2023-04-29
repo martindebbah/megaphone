@@ -13,25 +13,28 @@
 static int id = -1;
 
 int main(void) {
-    char *ans = calloc(10, 1);
+    char ans[MAX_MESSAGE_SIZE] = {0};
     int notLogged = 1;
     while (notLogged) { // Boucle tant que pas d'identitfiant
-        printf("Êtes-vous déjà inscrit ? (o/n)\n");
-        int nread = read(0, ans, 10);
+        printf("Êtes-vous déjà inscrit ? (o/n/q[uitter])\n");
+        int nread = read(0, ans, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read demande inscription");
-            goto error;
+            return 1;
         }
+        printf("\n");
 
         if (ans[0] == 'o') { // Déjà inscrit
+            memset(ans, 0, MAX_MESSAGE_SIZE);
             int idNotValid = 1;
             while (idNotValid) { // Boucle tant que l'id n'est pas un entier
                 printf("Veuillez entrer votre identifiant\n");
-                nread = read(0, ans, 10);
+                nread = read(0, ans, MAX_MESSAGE_SIZE);
                 if (nread == -1) {
                     perror("Erreur read identifiant");
-                    goto error;
+                    return 1;
                 }
+                printf("\n");
 
                 char *endptr;
                 id = strtol(ans, &endptr, 10);
@@ -40,65 +43,83 @@ int main(void) {
                     printf("L'identifiant n'est pas valide, un entier positif est attendu\n");
                 }else {
                     idNotValid = 0;
-                    notLogged = 0;
                 }
+                memset(ans, 0, MAX_MESSAGE_SIZE);
             }
             notLogged = 0;
         }else if (ans[0] == 'n') { // Pas encore inscrit
+            memset(ans, 0, MAX_MESSAGE_SIZE);
             printf("Veuillez entrer votre pseudo\n");
-            nread = read(0, ans, 10);
+            nread = read(0, ans, MAX_MESSAGE_SIZE);
             if (nread == -1) {
                 perror("Erreur read pseudo");
-                goto error;
+                return 1;
             }
+            printf("\n");
 
             id = inscription(ans);
+            if (id == -1)
+                printf("Une erreur est survenue, veuillez réessayer\n");
+            else
+                notLogged = 0;
+        }else if (ans[0] == 'q') { // Quitter
             notLogged = 0;
-        }else { // Ni `o` ni `n`
+        }else {
             printf("Veuillez entrer `o` pour oui ou `n` pour non\n");
+            printf("`q` pour quitter l'application\n");
+            memset(ans, 0, MAX_MESSAGE_SIZE);
         }
     }
 
-    if (id == -1)
-        exit(1);
+    if (id == -1) {
+        printf("Au revoir\n");
+        exit(0);
+    }
 
+    memset(ans, 0, MAX_MESSAGE_SIZE);
     printf("Votre numéro d'identification est: %d\n", id);
 
     int action = 1;
-    printf("Que voulez-vous faire ?\n");
-    printf("1. Poster un billet (p)\n");
-    printf("2. Lister les n derniers billets (l)\n");
     while(action){
-        int nread = read(0, ans, 10);
+        printf("Que voulez-vous faire ?\n");
+        printf("1. Poster un billet (p)\n");
+        printf("2. Lister les n derniers billets (l)\n");
+        printf("3. Quitter (q)\n");
+
+        int nread = read(0, ans, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read action");
-            goto error;
+            return 1;
+        }
+        printf("\n");
+
+        int err = 0;
+        switch (ans[0]) {
+            case 'p':
+                err = poster_billet(id);
+                break;
+            case 'l':
+                err = demander_billets(id);
+                break;
+            case 'q':
+                action = 0;
+                break;
+            default:
+                printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
+                printf("ou `q` pour quitter l'application.\n");
+                break;
         }
 
-        if (ans[0] == 'p') {
-            action = 0;
-            int p = poster_billet(id);
-            if(p == -1){
-                perror("Erreur lors de l'envoi du billet");
-                goto error;
-            }
-        }else if (ans[0] == 'l') {
-            action = 0;
-            //int l = demander_billets(id);
-        }else {
-            printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
+        if (err) {
+            printf("Erreur\n");
         }
+        memset(ans, 0, MAX_MESSAGE_SIZE);
     }
 
-    free(ans);
+    printf("Déconnexion réussie !\n");
 
     // `echo $?` pour valeur de retour
     exit(0);
-
-    error:
-        if (ans)
-            free(ans);
-        return 1;
 }
 
 int connect_to_server(void) {
@@ -158,8 +179,6 @@ int inscription(char *pseudo) {
     if (!server_message)
         goto error;
 
-    // TODO: Ajouter une condition pour CODEREQ = 31
-
     // Si le serveur renvoie une erreur
     if (server_message -> codereq != 1)
         goto error;
@@ -189,27 +208,43 @@ int poster_billet(int id){
     int sock = -1;
     int numfil = -1;
     int datalen = -1;
-    char *data = malloc(sizeof(char) * (MAX_MESSAGE_SIZE + 1));
+    char *data = calloc(1, sizeof(char) * (MAX_MESSAGE_SIZE + 1));
+    client_message_t *billet = NULL;
+    server_message_t *mes = NULL;
+    char ans[MAX_MESSAGE_SIZE] = {0};
 
     int post = 1;
     printf("Veuillez entrer le numéro du fil.\n");
     while(post){
-        scanf("%d", &numfil);
-        if (numfil < 0)
+        int nread = read(0, ans, MAX_MESSAGE_SIZE);
+        if (nread == -1) {
+            perror("read numfil");
+            goto error;
+        }
+        printf("\n");
+
+        char *endptr;
+        numfil = strtol(ans, &endptr, 10);
+        if (ans == endptr || numfil < 0) { // Valeur invalide
             printf("Veuillez entrer un entier positif !\n");
-        else
+        }else {
             post = 0;
+        }
+
+        memset(ans, 0, MAX_MESSAGE_SIZE);
     }
+    
     post = 1;
     printf("Veuillez entrer le message à poster.\n");
     while(post){
         int nread = read(0, data, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read message");
-            return -1;
+            goto error;
         }
+        printf("\n");
 
-        if (nread > MAX_MESSAGE_SIZE) {
+        if (nread > MAX_MESSAGE_SIZE) { // N'arrivera pas puisqu'on lit max MAX_MESSAGE_SIZE caractères
             printf("Veuillez entrer un message de moins de %d caractères\n", MAX_MESSAGE_SIZE);
         }
         else {
@@ -227,7 +262,7 @@ int poster_billet(int id){
     }
 
     // on crée le billet
-    client_message_t *billet = create_client_message(2, id, numfil, 0, datalen, data);
+    billet = create_client_message(2, id, numfil, 0, datalen, data);
     if(billet == NULL){
         perror("Erreur création billet");
         goto error;
@@ -240,7 +275,7 @@ int poster_billet(int id){
     }
 
     // message du serveur
-    server_message_t *mes = read_server_message(sock);
+    mes = read_server_message(sock);
     if(mes == NULL){
         perror("Erreur lecture message serveur");
         goto error;
@@ -248,7 +283,7 @@ int poster_billet(int id){
 
     printf("Code requête : %d\n", mes -> codereq);
     printf("Id : %d\n", mes -> id);
-    if(mes -> codereq != 34){
+    if(mes -> codereq == 2){
         printf("Message posté !\n");
     }
     else{
@@ -278,6 +313,8 @@ int demander_billets(int id){
     int sock = -1;
     int numfil = -1;
     int n_billets = -1;
+    client_message_t *billet;
+    server_message_t *mes = NULL;
 
     int post = 1;
     printf("Veuillez entrer le numéro du fil.\n");
@@ -308,7 +345,7 @@ int demander_billets(int id){
     }
 
     // on crée le billet
-    client_message_t *billet = create_client_message(3, id, numfil, n_billets, 0, "");
+    billet = create_client_message(3, id, numfil, n_billets, 0, "");
     if(billet == NULL){
         perror("Erreur création billet");
         goto error;
@@ -321,7 +358,7 @@ int demander_billets(int id){
     }
 
     // message du serveur
-    server_message_t *mes = read_server_message(sock);
+    mes = read_server_message(sock);
     if(mes == NULL){
         perror("Erreur lecture message");
         goto error;

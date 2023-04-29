@@ -192,6 +192,17 @@ int send_server_message(int fd, server_message_t *server_message) {
 	return 0;
 }
 
+void send_error_message(int fd) {
+    server_message_t *error_message = create_server_message(31, 0, 0, 0);
+    if (!error_message) {
+        perror("create error_message");
+        return;
+    }
+
+    send_server_message(fd, error_message);
+    delete_server_message(error_message);
+}
+
 server_message_t *read_server_message(int fd) {
     server_message_t *server_message = calloc(1, sizeof(server_message_t));
     if (!server_message) {

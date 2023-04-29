@@ -101,6 +101,9 @@ server_message_t *create_server_message(int codereq, int id, int numfil, int nb)
 // Envoie un message serveur sur le file descriptor donné
 int send_server_message(int fd, server_message_t *server_message);
 
+// Envoie un message d'erreur sur le file descriptor donné
+void send_error_message(int fd);
+
 // Lit un message (côté client)
 server_message_t *read_server_message(int fd);
 

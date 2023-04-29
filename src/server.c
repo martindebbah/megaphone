@@ -110,6 +110,96 @@ int main(void) {
 		return 1;
 }
 
+void *serve(void *arg) {
+	int sock = *((int *) arg);
+	// Recv
+	char data[12] = {0};
+	if (recv(sock, data, 12, 0) < 0) { // Lire plus
+		perror("Erreur recv");
+		close(sock);
+		return NULL;
+	}
+
+	uint16_t header = 0;
+	memmove(&header, &data[0], 2);
+	// Récupération du CODEREQ
+	int codereq = ntohs(header) & 0x1F;
+
+	// Valeur de retour 
+	int err = 0;
+
+	// On gère la requête en fonction de son code
+	switch (codereq) {
+		case 1: // Inscription
+			err = register_new_client(sock, data);
+			break;
+		case 2: // Poster un billet
+			break;
+		case 3: // Liste des n derniers billets
+			break;
+		case 4: // Abonnement à un fil
+			break;
+		case 5: // Ajouter un fichier
+			break;
+		case 6: // Télécharger un fichier
+			break;
+		default: // CODEREQ invalide
+			err = 1;
+	}
+
+	// Gestion des erreurs
+	if (err)
+		send_error_message(sock);
+
+	// Fermeture socket client
+	close(sock);
+	// Réécriture du tas pour réutilisabilité du thread
+	int closed = -1;
+	memmove(arg, &closed, sizeof(int));
+	return NULL;
+}
+
+int register_new_client(int sock, char *data) {
+	new_client_t *new_client = NULL;
+	server_message_t *server_message = NULL;
+
+	// Conversion de `data` en `struct new_client_t`
+	new_client = read_to_new_client(data);
+	if (!new_client) {
+		perror("Erreur lecture new_client");
+		goto error;
+	}
+
+	// Ajout de l'utilisateur dans le registre
+	int id = add_user(new_client -> pseudo);
+	if (id == -1) {
+		perror("Erreur ajout utilisateur");
+		goto error;
+	}
+
+	// Création du message de réponse
+	server_message = create_server_message(1, id, 0, 0);
+	if (!server_message) {
+		perror("Erreur création server_message");
+		goto error;
+	}
+
+	// Envoi du message de réponse
+	send_server_message(sock, server_message);
+
+	// Libération des ressources
+	delete_new_client(new_client);
+	delete_server_message(server_message);
+	return 0;
+
+	error:
+		if (new_client)
+			delete_new_client(new_client);
+		if (server_message)
+			delete_server_message(server_message);
+		return 1;
+}
+
 void create_register(void) {
 	users_reg = calloc(1, sizeof(users_register_t));
 	if (!users_reg) {
@@ -182,86 +272,6 @@ void delete_register(void) {
 		free(users_reg -> users);
 	}
 	free(users_reg);
-}
-
-int register_new_client(int sock, char *data) {
-	new_client_t *new_client = NULL;
-	server_message_t *server_message = NULL;
-
-	// Conversion de `data` en `struct new_client_t`
-	new_client = read_to_new_client(data);
-	if (!new_client) {
-		perror("Erreur lecture new_client");
-		goto error;
-	}
-
-	// Ajout de l'utilisateur dans le registre
-	int id = add_user(new_client -> pseudo);
-	if (id == -1) {
-		perror("Erreur ajout utilisateur");
-		goto error;
-	}
-
-	// Création du message de réponse
-	server_message = create_server_message(1, id, 0, 0);
-	if (!server_message) {
-		perror("Erreur création server_message");
-		goto error;
-	}
-
-	// Envoi du message de réponse
-	send_server_message(sock, server_message);
-
-	// Libération des ressources
-	delete_new_client(new_client);
-	delete_server_message(server_message);
-	return 0;
-
-	error:
-		if (new_client)
-			delete_new_client(new_client);
-		if (server_message)
-			delete_server_message(server_message);
-		return 1;
-}
-
-void *serve(void *arg) {
-	int sock = *((int *) arg);
-	// Recv
-	char data[12] = {0};
-	if (recv(sock, data, 12, 0) < 0) { // Lire plus
-		perror("Erreur recv");
-		close(sock);
-		return NULL;
-	}
-
-	uint16_t header = 0;
-	memmove(&header, &data[0], 2);
-	// Récupération du CODEREQ
-	int codereq = ntohs(header) & 0x1F;
-
-	// On gère la requête en fonction de son code
-	switch (codereq) {
-		case 1: // Inscription
-			register_new_client(sock, data);
-			break;
-		case 2: // Poster un billet
-			break;
-		case 3: // Liste des n derniers billets
-			break;
-		case 4: // Abonnement à un fil
-			break;
-		case 5: // Ajouter un fichier
-			break;
-		case 6: // Télécharger un fichier
-			break;
-	}
-	// Fermeture socket client
-	close(sock);
-	// Réécriture du tas pour réutilisabilité du thread
-	int closed = -1;
-	memmove(arg, &closed, sizeof(int));
-	return NULL;
 }
 
 void handler(int sig) {
