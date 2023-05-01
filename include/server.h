@@ -6,10 +6,11 @@ typedef struct users_register_t {
 	int new_id;
 } users_register_t;
 
-typedef struct stack_post_t {
+typedef struct stack_post_t stack_post_t;
+struct stack_post_t {
 	post_t *post;
 	stack_post_t *next;
-} stack_post_t;
+};
 
 typedef struct msg_thread_t {
 	int nb_msg;
@@ -52,13 +53,28 @@ void push_post(stack_post_t *stack_post, post_t *post);
 // Libère la mémoire allouée pour la pile
 void delete_stack_post(stack_post_t *stack_post);
 
+// Créer un fil avec le pseudo de l'initiateur du fil
+msg_thread_t *create_msg_thread(char *pseudo);
+
+// Ajoute un post au fil
+void add_post(msg_thread_t *msg_thread, post_t *post);
+
+// Libère la mémoire allouée pour le fil
+void delete_msg_thread(msg_thread_t **msg_thread);
+
 // Créer un registre de fils vide
-msg_threads_register_t *create_msg_threads_register(void);
+void create_msg_threads_register(void);
 
 // Ajoute un fil au registre
 void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread);
 
 // Libère la mémoire allouée pour le registre
-void delete_msg_threads_register(msg_threads_register_t *msg_threads_register);
+void delete_msg_threads_register(void);
+
+// Recevoir et stocker un billet envoyé par un client
+int receive_post(int sock, char *client_data);
+
+// Envoyer les n derniers billets d'un fil à un client
+int send_posts(int sock, char *client_data);
 
 #endif
