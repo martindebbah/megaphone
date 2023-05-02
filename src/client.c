@@ -6,71 +6,62 @@
 static int id = -1;
 
 int main(void) {
-    char ans[MAX_MESSAGE_SIZE] = {0};
+    char buf[MAX_MESSAGE_SIZE] = {0};
     int notLogged = 1;
     while (notLogged) { // Boucle tant que pas d'identitfiant
         printf("Êtes-vous déjà inscrit ? (o/n/q[uitter])\n");
-        int nread = read(0, ans, MAX_MESSAGE_SIZE);
+        int nread = read(0, buf, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read demande inscription");
             return 1;
         }
         printf("\n");
 
-        if (ans[0] == 'o') { // Déjà inscrit
-            memset(ans, 0, MAX_MESSAGE_SIZE);
+        if (buf[0] == 'o') { // Déjà inscrit
             int idNotValid = 1;
-            while (idNotValid) { // Boucle tant que l'id n'est pas un entier
+            while (idNotValid) { // Boucle tant que l'id n'est pas un entier strictement positif
                 printf("Veuillez entrer votre identifiant\n");
-                nread = read(0, ans, MAX_MESSAGE_SIZE);
-                if (nread == -1) {
-                    perror("Erreur read identifiant");
-                    return 1;
-                }
-                printf("\n");
-
-                char *endptr;
-                id = strtol(ans, &endptr, 10);
-
-                if (endptr == ans || id < 0) { // Valeur invalide
-                    printf("L'identifiant n'est pas valide, un entier positif est attendu\n");
-                }else {
+                id = read_int();
+                if (id > 0)
                     idNotValid = 0;
-                }
-                memset(ans, 0, MAX_MESSAGE_SIZE);
             }
             notLogged = 0;
-        }else if (ans[0] == 'n') { // Pas encore inscrit
-            memset(ans, 0, MAX_MESSAGE_SIZE);
+
+        }else if (buf[0] == 'n') { // Pas encore inscrit
+            memset(buf, 0, MAX_MESSAGE_SIZE);
             printf("Veuillez entrer votre pseudo\n");
-            nread = read(0, ans, MAX_MESSAGE_SIZE);
+            nread = read(0, buf, MAX_MESSAGE_SIZE);
             if (nread == -1) {
                 perror("Erreur read pseudo");
                 return 1;
             }
             printf("\n");
 
-            id = inscription(ans);
+            id = inscription(buf);
             if (id == -1)
                 printf("Une erreur est survenue, veuillez réessayer\n");
             else
                 notLogged = 0;
-        }else if (ans[0] == 'q') { // Quitter
+
+        }else if (buf[0] == 'q') { // Quitter
             notLogged = 0;
+
         }else {
             printf("Veuillez entrer `o` pour oui ou `n` pour non\n");
             printf("`q` pour quitter l'application\n");
-            memset(ans, 0, MAX_MESSAGE_SIZE);
+            memset(buf, 0, MAX_MESSAGE_SIZE);
         }
     }
 
+    // L'utilisateur quitte l'application
     if (id == -1) {
         printf("Au revoir\n");
         exit(0);
     }
 
-    memset(ans, 0, MAX_MESSAGE_SIZE);
+    memset(buf, 0, MAX_MESSAGE_SIZE);
     printf("Votre numéro d'identification est: %d\n", id);
+    printf("Veuillez noter ce numéro pour pouvoir vous reconnecter plus tard\n");
 
     int action = 1;
     while(action){
@@ -79,7 +70,7 @@ int main(void) {
         printf("2. Lister les n derniers billets (l)\n");
         printf("3. Quitter (q)\n");
 
-        int nread = read(0, ans, MAX_MESSAGE_SIZE);
+        int nread = read(0, buf, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read action");
             return 1;
@@ -87,7 +78,7 @@ int main(void) {
         printf("\n");
 
         int err = 0;
-        switch (ans[0]) {
+        switch (buf[0]) {
             case 'p':
                 err = poster_billet(id);
                 break;
@@ -106,9 +97,10 @@ int main(void) {
         if (err) {
             printf("Erreur\n");
         }
-        memset(ans, 0, MAX_MESSAGE_SIZE);
+        memset(buf, 0, MAX_MESSAGE_SIZE);
     }
 
+    printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
     printf("Déconnexion réussie !\n");
 
     // `echo $?` pour valeur de retour
@@ -189,8 +181,8 @@ int connect_to_server_6(void) {
 int inscription(char *pseudo) {
     // Initialisation des pointeurs
     new_client_t *new_client = NULL;
-    int sock = -1;
     server_message_t *server_message = NULL;
+    int sock = -1;
 
     // Création de la struct new_client avec le pseudo donné
     new_client = create_new_client(pseudo);
@@ -243,27 +235,13 @@ int poster_billet(int id){
     char *data = calloc(1, sizeof(char) * (MAX_MESSAGE_SIZE + 1));
     client_message_t *billet = NULL;
     server_message_t *mes = NULL;
-    char ans[MAX_MESSAGE_SIZE] = {0};
 
     int post = 1;
-    printf("Veuillez entrer le numéro du fil.\n");
     while(post){
-        int nread = read(0, ans, MAX_MESSAGE_SIZE);
-        if (nread == -1) {
-            perror("read numfil");
-            goto error;
-        }
-        printf("\n");
-
-        char *endptr;
-        numfil = strtol(ans, &endptr, 10);
-        if (ans == endptr || numfil < 0) { // Valeur invalide
-            printf("Veuillez entrer un entier positif !\n");
-        }else {
+        printf("Veuillez entrer le numéro du fil.\n");
+        numfil = read_int();
+        if (numfil != -1)
             post = 0;
-        }
-
-        memset(ans, 0, MAX_MESSAGE_SIZE);
     }
     
     post = 1;
@@ -315,11 +293,10 @@ int poster_billet(int id){
 
     printf("Code requête : %d\n", mes -> codereq);
     printf("Id : %d\n", mes -> id);
-    if(mes -> codereq == 2){
+    if(mes -> codereq == 2) {
         printf("Message posté !\n");
-    }
-    else{
-        printf("Erreur lors de l'envoi du message\n");
+    }else {
+        goto error;
     }
 
     free(data);
@@ -345,27 +322,24 @@ int demander_billets(int id){
     int sock = -1;
     int numfil = -1;
     int n_billets = -1;
-    client_message_t *billet;
+    client_message_t *billet = NULL;
     server_message_t *mes = NULL;
 
     int post = 1;
-    printf("Veuillez entrer le numéro du fil.\n");
-    printf("Pour demander tous les fils, entrez 0.\n");
     while(post){
-        scanf("%d", &numfil);
-        if (numfil < 0)
-            printf("Veuillez entrer un entier positif !\n");
-        else
+        printf("Veuillez entrer le numéro du fil.\n");
+        printf("Pour demander tous les fils, entrez 0.\n");
+        numfil = read_int();
+        if (numfil != -1)
             post = 0;
     }
+
     post = 1;
-    printf("Veuillez entrer le nombre de messages.\n");
-    printf("Pour demander tous les messages, entrez 0.\n");
     while(post){
-        scanf("%d", &n_billets);
-        if (n_billets < 0)
-            printf("Veuillez entrer un entier positif !\n");
-        else
+        printf("Veuillez entrer le nombre de messages.\n");
+        printf("Pour demander tous les messages, entrez 0.\n");
+        n_billets = read_int();
+        if (n_billets != -1)
             post = 0;
     }
 
@@ -396,6 +370,9 @@ int demander_billets(int id){
         goto error;
     }
 
+    if (mes -> codereq != 3)
+        goto error;
+
     printf("Codereq : %d, Id : %d, Fil : %d\n", billet->codereq, billet->id, billet->numfil);
 
     for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
@@ -411,6 +388,10 @@ int demander_billets(int id){
         delete_post(posts);
     }
 
+    delete_client_message(billet);
+    delete_server_message(mes);
+    close(sock);
+
     return 0;
 
     error:
@@ -421,4 +402,23 @@ int demander_billets(int id){
         if (sock >= 0)
             close(sock);
         return -1;    
+}
+
+int read_int(void) {
+    char buf[MAX_MESSAGE_SIZE] = {0};
+    int nread = read(0, buf, MAX_MESSAGE_SIZE);
+    if (nread < 0) {
+        perror("read_entier");
+        return -1;
+    }
+    printf("\n");
+
+    char *endptr;
+    int n = strtol(buf, &endptr, 10);
+    
+    if (buf == endptr || n < 0) {
+        printf("Veuillez entrer un entier positif !\n");
+        return -1;
+    }
+    return n;
 }

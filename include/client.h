@@ -20,4 +20,7 @@ int poster_billet(int id);
 // Demander la liste des n derniers billets
 int demander_billets(int id);
 
+// Lit l'entrée standard, retourne l'entier positif correspondant, -1 si pas positif ou pas un entier
+int read_int(void);
+
 #endif
