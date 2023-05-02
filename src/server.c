@@ -118,10 +118,16 @@ int main(void) {
 }
 
 void print_fil(msg_thread_t *fil){
+	if(fil == NULL){
+		printf("Fil vide\n");
+		return;
+	}
 	printf("Nb messages : %d\n", fil->nb_msg);
-	for(int i = 0; i < fil->nb_msg; i++){
-		printf("Message de %s\n", fil->posts[i].post->pseudo);
-		printf("Message %d : %s\n", i+1, fil->posts[i].post->data);
+	stack_post_t *tmp = fil->posts;
+	while (tmp != NULL){
+		printf("Message de %s\n", tmp->post->pseudo);
+		printf("Contenu : %s\n", tmp->post->data);
+		tmp = tmp->next;
 	}
 }
 
@@ -264,19 +270,6 @@ void *serve(void *arg) {
 
 	//TEST
 
-	/*msg_thread_t *test_fil = create_msg_thread("test######");
-	post_t *test_post = malloc(sizeof(post_t));
-	test_post->numfil = 1;
-	memmove(test_post->origin, test_fil->pseudo_init, 10);
-	test_post->origin[10] = 0;
-	memmove(test_post->pseudo, "jean######", 10);
-	test_post->pseudo[10] = 0;
-	test_post->datalen = 5;
-	test_post->data = "salut";
-	add_post(test_fil, test_post);
-	add_msg_thread(msg_threads_reg, test_fil);
-	print_posts();*/
-
 	//FIN TEST
 
 	// On gère la requête en fonction de son code
@@ -324,21 +317,6 @@ stack_post_t *create_stack_post(void){
 	return stack;
 }
 
-void push_post(stack_post_t *stack_post, post_t *post){
-	if (!stack_post || !post)
-		return;
-
-	if(!stack_post -> post){
-		stack_post -> post = post;
-		return;
-	}
-
-	stack_post_t *new_stack = create_stack_post();
-	new_stack -> post = post;
-	new_stack -> next = stack_post;
-	stack_post = new_stack;
-}
-
 void delete_stack_post(stack_post_t *stack) {
 	if (!stack)
 		return;
@@ -365,7 +343,12 @@ void add_post(msg_thread_t *msg_thread, post_t *post){
 	if (!msg_thread || !post)
 		return;
 
-	push_post(msg_thread -> posts, post);
+	stack_post_t *new_stack = create_stack_post();
+	new_stack -> post = post;
+	if(msg_thread->posts->post != NULL){
+		new_stack->next = msg_thread->posts;
+	}
+	msg_thread->posts = new_stack;
 	msg_thread -> nb_msg++;
 }
 
@@ -394,23 +377,14 @@ void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *
 	if (!msg_threads_register || !msg_thread)
 		return;
 
-	if(!msg_threads_register -> msg_threads){
-		msg_threads_register -> msg_threads = calloc(1, sizeof(msg_thread_t *));
-		if (!msg_threads_register -> msg_threads) {
-			perror("Erreur ajout msg_thread");
-			return;
-		}
-		msg_threads_register -> msg_threads[0] = msg_thread;
-		return;
-	}
-
-	msg_thread_t **new_msg_threads = realloc(msg_threads_register -> msg_threads, (msg_threads_register -> nb_fils + 1) * sizeof(msg_thread_t *));
+	msg_thread_t **new_msg_threads = realloc(msg_threads_register -> msg_threads, (msg_threads_register -> nb_fils + 2) * sizeof(msg_thread_t *));
 	if (!new_msg_threads) {
 		perror("Erreur ajout msg_thread");
 		return;
 	}
 
 	new_msg_threads[msg_threads_register -> nb_fils] = msg_thread;
+	new_msg_threads[msg_threads_register -> nb_fils + 1] = NULL;
 	msg_threads_register -> msg_threads = new_msg_threads;
 	msg_threads_register -> nb_fils++;
 }
@@ -430,10 +404,13 @@ int receive_post(int sock, char *client_data){
 	int id = ntohs(header) >> 5;
 	int numfil = 0;
 	memmove(&numfil, &client_data[2], 2);
+	numfil = ntohs(numfil);
 	int nb = 0;
 	memmove(&nb, &client_data[4], 2);
+	nb = ntohs(nb);
 	int datalen = 0;
 	memmove(&datalen, &client_data[6], 1);
+	datalen = ntohs(datalen);
 	char *data = calloc(datalen, sizeof(char));
 	if (!data) {
 		goto error;
@@ -441,7 +418,7 @@ int receive_post(int sock, char *client_data){
 	memmove(data, &client_data[7], datalen);
 
 	// si l'utilisateur n'est pas inscrit ou si le fil n'existe pas et n'est pas 0
-	if(get_user(id) == NULL || (msg_threads_reg->nb_fils <= numfil && numfil != 0)){
+	if(get_user(id) == NULL || (msg_threads_reg->nb_fils < numfil && numfil != 0)){
 		perror("Erreur fil ou utilisateur inexistant");
 		goto error;
 	}
@@ -460,13 +437,12 @@ int receive_post(int sock, char *client_data){
 	post->data = data;
 
 	if(numfil == 0){
-		msg_threads_reg->nb_fils++;
 		msg_thread_t *msg_thread = create_msg_thread(get_user(id));
-		post->numfil = msg_threads_reg->nb_fils;
 		memmove(post->origin, msg_thread->pseudo_init, 10);
 		post->origin[10] = 0;
 		add_post(msg_thread, post);
 		add_msg_thread(msg_threads_reg, msg_thread);
+		post->numfil = msg_threads_reg->nb_fils;
 	}
 	else {
 		memmove(post->origin, msg_threads_reg->msg_threads[numfil-1]->pseudo_init, 10);

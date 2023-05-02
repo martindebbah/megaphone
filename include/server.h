@@ -47,9 +47,6 @@ void handler(int sig);
 // Créer une pile de posts vide
 stack_post_t *create_stack_post(void);
 
-// Ajoute un post à la pile
-void push_post(stack_post_t *stack_post, post_t *post);
-
 // Libère la mémoire allouée pour la pile
 void delete_stack_post(stack_post_t *stack_post);
 
