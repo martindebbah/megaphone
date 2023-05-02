@@ -23,7 +23,7 @@ typedef struct udp_t {
     int codereq;
     int id;
     uint16_t numblock;
-    char *paquet[512]; // A définir
+    char paquet[512];
 } udp_t;
 
 // Représente le format de la réponse du serveur

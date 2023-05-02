@@ -12,6 +12,9 @@ void *serve(void *arg);
 // Gère la requête 1 pour inscription d'un nouvel utilisateur
 int register_new_client(int sock, char *data);
 
+// Gère la requête 5 pour ajout d'un fichier
+int add_file(int sock, char *data);
+
 // Alloue la mémoire nécessaire et initialise un registre vide
 void create_register(void);
 

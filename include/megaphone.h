@@ -1,11 +1,12 @@
 #ifndef MEGAPHONE_H
 #define MEGAPHONE_H
 
-// Adresses connexion client et port
-#define ADDR4   "127.0.0.1"
-#define ADDR6   "::1"
-#define TYPE    4
-#define PORT    30000
+// Adresses connexion client et ports
+#define ADDR4       "127.0.0.1"
+#define ADDR6       "::1"
+#define TYPE        4
+#define PORT        30000
+#define UDP_PORT    30001
 
 // Nombre maximal de threads en simultané
 #define NTHREADS 10
@@ -31,5 +32,6 @@
 #include "message.h"
 #include "server.h"
 #include "client.h"
+#include "file.h"
 
 #endif

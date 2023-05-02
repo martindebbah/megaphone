@@ -45,7 +45,6 @@ int main(void) {
 	struct sockaddr_in6 addr;
 	memset(&addr, 0, sizeof(addr));
 
-	// IPv4 pour l'instant
 	addr.sin6_family = AF_INET6;
 	addr.sin6_port = htons(PORT);
 	addr.sin6_addr = in6addr_any;
@@ -156,6 +155,7 @@ void *serve(void *arg) {
 		case 4: // Abonnement à un fil
 			break;
 		case 5: // Ajouter un fichier
+			err = add_file(sock, data);
 			break;
 		case 6: // Télécharger un fichier
 			break;
@@ -182,7 +182,7 @@ int register_new_client(int sock, char *data) {
 	// Conversion de `data` en `struct new_client_t`
 	new_client = read_to_new_client(data);
 	if (!new_client) {
-		perror("Erreur lecture new_client");
+		perror("Erreur register_new_client  new_client");
 		goto error;
 	}
 
@@ -196,7 +196,7 @@ int register_new_client(int sock, char *data) {
 	// Création du message de réponse
 	server_message = create_server_message(1, id, 0, 0);
 	if (!server_message) {
-		perror("Erreur création server_message");
+		perror("Erreur register_new_client server_message");
 		goto error;
 	}
 
@@ -213,6 +213,101 @@ int register_new_client(int sock, char *data) {
 			delete_new_client(new_client);
 		if (server_message)
 			delete_server_message(server_message);
+		return 1;
+}
+
+int add_file(int sock, char *data) {
+	client_message_t *client_message = NULL;
+	server_message_t *server_message = NULL;
+	file_t *file = NULL;
+	int udp_sock = -1;
+
+	// Conversion de `data` en `struct client_message`
+	client_message = read_to_client_message(data);
+	if (!client_message) {
+		perror("Erreur add_file client_message");
+		goto error;
+	}
+
+	// Création du message de réponse du serveur
+	server_message = create_server_message(client_message -> codereq, client_message -> id,
+											client_message -> numfil, UDP_PORT);
+	if (!client_message) {
+		perror("Erreur add_file client_message");
+		goto error;
+	}
+
+	// Initialisation du socket UDP en IPv6
+	udp_sock = socket(PF_INET6, SOCK_DGRAM, 0);
+	if (udp_sock < 0) {
+		perror("Erreur init udp_sock");
+		goto error;
+	}
+
+	// Structure adresse IPv6
+	struct sockaddr_in6 addr;
+	memset(&addr, 0, sizeof(addr));
+
+	addr.sin6_family = AF_INET6;
+	addr.sin6_addr = in6addr_any;
+	addr.sin6_port = htons(UDP_PORT);
+
+	// Bind
+	if (bind(udp_sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		perror("Erreur bind udp_sock");
+		goto error;
+	}
+
+	file = create_file(client_message -> data, client_message -> numfil);
+	if (!file) {
+		perror("Erreur file");
+		goto error;
+	}
+
+	// Envoi du message serveur
+	if (send_server_message(sock, server_message) == 1) {
+		perror("Erreur add_file envoi serveur message");
+		goto error;
+	}
+
+	while (is_complete(file) == 0) {
+		char buffer[516] = {0};
+
+		int n = recvfrom(udp_sock, buffer, 516, 0, NULL, NULL);
+		if (n < 0) {
+			perror("Erreur recvfrom udp");
+			goto error; // Problème recv client ?
+		}
+
+		udp_t *udp = create_udp(buffer);
+		if (!udp) {
+			perror("Erreur udp");
+			delete_udp(udp);
+			goto error; // Problème recv client ?
+		}
+
+		if (add_data(file, udp) == 1) {
+			perror("Erreur ajout udp");
+			delete_udp(udp);
+			goto error; // Problème recv client ?
+		}
+	}
+
+	delete_client_message(client_message);
+	delete_server_message(server_message);
+	close(udp_sock);
+
+	return 0;
+
+	error:
+		if (client_message)
+			delete_client_message(client_message);
+		if (server_message)
+			delete_server_message(server_message);
+		if (file)
+			delete_file(file);
+		if (udp_sock != -1)
+			close(udp_sock);
 		return 1;
 }
 

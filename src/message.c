@@ -145,6 +145,42 @@ int send_client_message(int fd, client_message_t *client_message) {
     return 0;
 }
 
+client_message_t *read_to_client_message(char *data) {
+    client_message_t *client_message = calloc(1, sizeof(client_message_t));
+    if (!client_message) {
+        perror("alloc read_to_client_message");
+        return NULL;
+    }
+
+    uint16_t header = 0;
+    memmove(&header, &data[0], 2);
+    uint16_t numfil = 0;
+    memmove(&numfil, &data[2], 2);
+    uint16_t nb = 0;
+    memmove(&nb, &data[4], 2);
+
+    // Récupération du CODEREQ
+    client_message -> codereq = ntohs(header) & 0x1F;
+    // Récupération de l'ID
+    client_message -> id = ntohs(header) >> 5;
+    // Récupération du NUMFIL
+    client_message -> numfil = ntohs(numfil);
+    // Récupération de NB
+    client_message -> nb = ntohs(nb);
+    // Récupération de DATALEN
+    memmove(&(client_message -> datalen), &data[6], 1);
+
+    client_message -> data = calloc(client_message -> datalen, 1);
+    if (!client_message -> data) {
+        perror("alloc data read_to_client_message");
+        delete_client_message(client_message);
+        return NULL;
+    }
+    memmove(client_message -> data, &data[7], client_message -> datalen);
+
+    return client_message;
+}
+
 void delete_client_message(client_message_t *client_message) {
     if (!client_message)
         return;
