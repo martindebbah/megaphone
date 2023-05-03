@@ -126,6 +126,7 @@ void print_fil(msg_thread_t *fil){
 	stack_post_t *tmp = fil->posts;
 	while (tmp != NULL){
 		printf("Message de %s\n", tmp->post->pseudo);
+		printf("Nb de caractères : %d\n", tmp->post->datalen);
 		printf("Contenu : %s\n", tmp->post->data);
 		tmp = tmp->next;
 	}
@@ -256,8 +257,8 @@ int register_new_client(int sock, char *data) {
 void *serve(void *arg) {
 	int sock = *((int *) arg);
 	// Recv
-	char data[12] = {0};
-	if (recv(sock, data, 12, 0) < 0) { // Lire plus
+	char data[7] = {0};
+	if (recv(sock, data, 7, 0) < 0) { // Lire plus
 		perror("Erreur recv");
 		close(sock);
 		return NULL;
@@ -267,6 +268,17 @@ void *serve(void *arg) {
 	memmove(&header, &data[0], 2);
 	// Récupération du CODEREQ
 	int codereq = ntohs(header) & 0x1F;
+	// Récupération de datalen
+	int datalen = 0;
+	memmove(&datalen, &data[6], 1);
+
+	char data_complete[7 + datalen];
+	memmove(data_complete, data, 7);
+	if(recv(sock, &data_complete[7], datalen, 0) < 0) {
+		perror("Erreur recv");
+		close(sock);
+		return NULL;
+	}
 
 	//TEST
 
@@ -275,14 +287,14 @@ void *serve(void *arg) {
 	// On gère la requête en fonction de son code
 	switch (codereq) {
 		case 1: // Inscription
-			register_new_client(sock, data);
+			register_new_client(sock, data_complete);
 			break;
 		case 2: // Poster un billet
-			receive_post(sock, data);
+			receive_post(sock, data_complete);
 			print_posts();
 			break;
 		case 3: // Liste des n derniers billets
-			send_posts(sock, data);
+			send_posts(sock, data_complete);
 			break;
 		case 4: // Abonnement à un fil
 			break;
@@ -398,7 +410,10 @@ void delete_msg_threads_register(void){
 }
 
 int receive_post(int sock, char *client_data){
-	char msg_error[6];
+	server_message_t *error_msg = create_server_message(31, 0, 0, 0);
+	if (!error_msg) {
+		goto error;
+	}
 	uint16_t header = 0;
 	memmove(&header, &client_data[0], 2);
 	int id = ntohs(header) >> 5;
@@ -410,7 +425,6 @@ int receive_post(int sock, char *client_data){
 	nb = ntohs(nb);
 	int datalen = 0;
 	memmove(&datalen, &client_data[6], 1);
-	datalen = ntohs(datalen);
 	char *data = calloc(datalen, sizeof(char));
 	if (!data) {
 		goto error;
@@ -451,8 +465,7 @@ int receive_post(int sock, char *client_data){
 	}
 
 	// réponse du serveur à envoyer au client
-	char server_msg[6];
-	memset(server_msg, 0, 6);
+	server_message_t *server_msg;
 	uint16_t numfil_to_send;
 	if(numfil == 0){
 		numfil_to_send = htons(msg_threads_reg->nb_fils);
@@ -460,30 +473,81 @@ int receive_post(int sock, char *client_data){
 	else{
 		numfil_to_send = htons(numfil);
 	}
-	uint16_t nb_to_send = htons(0);
-	memmove(&server_msg[0], &client_data[0], 2);
-	memmove(&server_msg[2], &numfil_to_send, 2);
-	memmove(&server_msg[4], &nb_to_send, 2);
+	server_msg = create_server_message(2, id, numfil_to_send, 0);
+	if(!server_msg){
+		goto error;
+	}
 
-	if(write(sock, server_msg, 6) == -1){
-		perror("Erreur écriture socket");
-		return -1;
+	if(send_server_message(sock, server_msg) == -1){
+		goto error;
 	}
 
 	return 0;
 
 	error:
 		// message d'erreur à envoyer au client
-		memset(msg_error, 0, 6);
-		uint16_t header_31 = create_header(31, id);
-		memmove(&msg_error[0], &header_31, 2);
-
-		if(write(sock, msg_error, 6) == -1){
+		if(error_msg && send_server_message(sock, error_msg) == -1){
 			perror("Erreur écriture socket");
 		}
 		return -1;
 }
 
 int send_posts(int sock, char *client_data){
+	server_message_t *error_msg = create_server_message(31, 0, 0, 0);
+	if (!error_msg) {
+		goto error;
+	}
+	uint16_t header = 0;
+	memmove(&header, &client_data[0], 2);
+	int id = ntohs(header) >> 5;
+	int numfil = 0;
+	memmove(&numfil, &client_data[2], 2);
+	numfil = ntohs(numfil);
+	int nb = 0;
+	memmove(&nb, &client_data[4], 2);
+	nb = ntohs(nb);
+
+	// si l'utilisateur n'est pas inscrit
+	if(get_user(id) == NULL){
+		perror("Erreur utilisateur inexistant");
+		goto error;
+	}
+
+	if(nb != 0 && numfil != 0){
+		int n = nb;
+		if(nb > msg_threads_reg->msg_threads[numfil-1]->nb_msg){
+			n = msg_threads_reg->msg_threads[numfil-1]->nb_msg;
+		}
+		server_message_t *server_msg = create_server_message(3, id, numfil, n);
+		if(!server_msg){
+			perror("Erreur création server_message");
+			goto error;
+		}
+		if(send_server_message(sock, server_msg) == -1){
+			delete_server_message(server_msg);
+			goto error;
+		}
+		delete_server_message(server_msg);
+
+		stack_post_t *tmp = msg_threads_reg->msg_threads[numfil-1]->posts;
+		while(tmp != NULL && n > 0){
+			if(send_post(sock, tmp->post) == -1){
+				goto error;
+			}
+			tmp = tmp->next;
+			n--;
+		}
+	}
+
+	delete_server_message(error_msg);
 	return 0;
+
+	error:
+		// message d'erreur à envoyer au client
+		if(send_server_message(sock, error_msg) == -1){
+			perror("Erreur écriture socket");
+		}
+		if(error_msg)
+			delete_server_message(error_msg);
+		return -1;
 }

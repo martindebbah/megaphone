@@ -110,6 +110,9 @@ void delete_server_message(server_message_t *server_message);
 // Lit les billets envoyés par le serveur
 post_t *read_post(int fd);
 
+// Envoyé les billets au client
+int send_post(int fd, post_t *post);
+
 // Libère la mémoire allouée pour un billet
 void delete_post(post_t *post);
 

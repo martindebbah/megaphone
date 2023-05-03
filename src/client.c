@@ -84,7 +84,11 @@ int main(void) {
             }
         }else if (ans[0] == 'l') {
             action = 0;
-            //int l = demander_billets(id);
+            int l = demander_billets(id);
+            if(l == -1){
+                perror("Erreur lors de la demande des billets");
+                goto error;
+            }
         }else {
             printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
         }
