@@ -189,6 +189,64 @@ void delete_client_message(client_message_t *client_message) {
     free(client_message);
 }
 
+udp_t *create_udp(int id, uint16_t numblock, char *buf) {
+    udp_t *udp = calloc(1, sizeof(udp_t));
+    if (!udp) {
+        perror("alloc udp");
+        return NULL;
+    }
+
+    udp -> codereq = 5;
+    udp -> id = id;
+    udp -> numblock = numblock;
+    memmove(udp -> paquet, buf, UDP_PACKET_SIZE);
+
+    return udp;
+}
+
+int send_udp(int sock, struct sockaddr_in6 addr, udp_t *udp) {
+    uint16_t header = create_header(udp -> codereq, udp -> id);
+    uint16_t numblock = htons(udp -> numblock);
+    char data[UDP_PACKET_SIZE + 4] = {0};
+    memmove(&data[0], &header, 2);
+    memmove(&data[2], &numblock, 2);
+    memmove(&data[4], udp -> paquet, UDP_PACKET_SIZE);
+
+    int nsent = sendto(sock, data, UDP_PACKET_SIZE + 4, 0, (struct sockaddr *) &addr, sizeof(addr));
+    if (nsent < 0) {
+        perror("sendto udp");
+        return 1;
+    }
+
+    return 0;
+}
+
+udp_t *read_to_udp(char *buf) {
+    udp_t *udp = calloc(1, sizeof(udp_t));
+    if (!udp) {
+        perror("alloc udp read_to_udp");
+        return NULL;
+    }
+
+    uint16_t header = 0;
+    memmove(&header, &buf[0], 2);
+    udp -> codereq = ntohs(header) & 0x1F;
+    udp -> id = ntohs(header) >> 5;
+
+    uint16_t numblock = 0;
+    memmove(&numblock, &buf[2], 2);
+    udp -> numblock = ntohs(numblock);
+
+    memmove(udp -> paquet, &buf[4], UDP_PACKET_SIZE);
+
+    return udp;
+}
+
+void delete_udp(udp_t *udp) {
+    if (udp)
+        free(udp);
+}
+
 server_message_t *create_server_message(int codereq, int id, int numfil, int nb) {
 	server_message_t *server_message = calloc(1, sizeof(server_message_t));
 	if (!server_message) {

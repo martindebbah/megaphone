@@ -21,8 +21,4 @@ int is_complete(file_t *file);
 // Libère la mémoire allouée pour `file`
 void delete_file(file_t *file);
 
-udp_t *create_udp(char *data);
-
-void delete_udp(udp_t *udp);
-
 #endif

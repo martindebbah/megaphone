@@ -12,7 +12,8 @@
 #define NTHREADS 10
 
 // Taille maximale des messages
-#define MAX_MESSAGE_SIZE 256
+#define MAX_MESSAGE_SIZE    256
+#define UDP_PACKET_SIZE     512
 
 // Librairies utilisées
 #include <stdlib.h>

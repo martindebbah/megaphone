@@ -231,7 +231,7 @@ int add_file(int sock, char *data) {
 
 	// Création du message de réponse du serveur
 	server_message = create_server_message(client_message -> codereq, client_message -> id,
-											client_message -> numfil, UDP_PORT);
+											client_message -> numfil, htons(UDP_PORT));
 	if (!client_message) {
 		perror("Erreur add_file client_message");
 		goto error;
@@ -270,8 +270,22 @@ int add_file(int sock, char *data) {
 		goto error;
 	}
 
+	struct timeval udp_timeout;
+	udp_timeout.tv_sec = 5;
+	udp_timeout.tv_usec = 0;
+
 	while (is_complete(file) == 0) {
 		char buffer[516] = {0};
+
+		// Pour ne pas bloquer si un paquet est perdu
+		fd_set set;
+		FD_ZERO(&set);
+		FD_SET(udp_sock, &set);
+		int sel = select(udp_sock + 1, &set, NULL, NULL, &udp_timeout);
+		if (sel <= 0) {
+			perror("select add_file");
+			goto error;
+		}
 
 		int n = recvfrom(udp_sock, buffer, 516, 0, NULL, NULL);
 		if (n < 0) {
@@ -279,7 +293,7 @@ int add_file(int sock, char *data) {
 			goto error; // Problème recv client ?
 		}
 
-		udp_t *udp = create_udp(buffer);
+		udp_t *udp = read_to_udp(buffer);
 		if (!udp) {
 			perror("Erreur udp");
 			delete_udp(udp);
@@ -295,6 +309,7 @@ int add_file(int sock, char *data) {
 
 	delete_client_message(client_message);
 	delete_server_message(server_message);
+	delete_file(file); // Ne pas delete mais ajouter au fil
 	close(udp_sock);
 
 	return 0;

@@ -20,4 +20,7 @@ int poster_billet(int id);
 // Demander la liste des n derniers billets
 int demander_billets(int id);
 
+// Ajoute un fichier sur le serveur, renvoie 0 en cas de succès, -1 sinon
+int ajouter_fichier(void);
+
 #endif

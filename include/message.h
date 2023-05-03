@@ -91,6 +91,21 @@ client_message_t *read_to_client_message(char *data);
 void delete_client_message(client_message_t *client_message);
 
 
+// UDP
+
+// Crée une structure UDP
+udp_t *create_udp(int id, uint16_t numblock, char *buf);
+
+// Envoie une structure UDP sur le socket et l'adresse donnés
+int send_udp(int sock, struct sockaddr_in6 addr, udp_t *udp);
+
+// Convertis une chaîne de caractères en struct udp_t
+udp_t *read_to_udp(char *buf);
+
+// Libère la mémoire allouée par une structure UDP
+void delete_udp(udp_t *udp);
+
+
 // Server:
 
 // Message:

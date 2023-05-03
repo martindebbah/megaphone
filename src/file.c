@@ -25,7 +25,7 @@ file_t *create_file(char *name, int name_len) {
 int add_data(file_t *file, udp_t *data) {
     if (file -> data[data -> numblock])
         return 1;
-    file -> data[data -> numblock] = data;
+    file -> data[data -> numblock - 1] = data;
     return 0;
 }
 
@@ -49,13 +49,4 @@ void delete_file(file_t *file) {
         if (file -> data[i])
             delete_udp(file -> data[i]);
     free(file);
-}
-
-udp_t *create_udp(char *data) {
-    return NULL;
-}
-
-void delete_udp(udp_t *udp) {
-    if (udp)
-        free(udp);
 }
