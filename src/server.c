@@ -274,10 +274,12 @@ void *serve(void *arg) {
 
 	char data_complete[7 + datalen];
 	memmove(data_complete, data, 7);
-	if(recv(sock, &data_complete[7], datalen, 0) < 0) {
-		perror("Erreur recv");
-		close(sock);
-		return NULL;
+	if(datalen > 0){
+		if(recv(sock, &data_complete[7], datalen, 0) < 0) {
+			perror("Erreur recv");
+			close(sock);
+			return NULL;
+		}
 	}
 
 	//TEST
@@ -513,22 +515,64 @@ int send_posts(int sock, char *client_data){
 		goto error;
 	}
 
-	if(nb != 0 && numfil != 0){
-		int n = nb;
-		if(nb > msg_threads_reg->msg_threads[numfil-1]->nb_msg){
+	int n = nb;
+	int f = numfil;
+	if(numfil == 0){
+		f = msg_threads_reg->nb_fils;
+		if(n == 0){
+			for(int i = 0; i < msg_threads_reg->nb_fils; i++){
+				if(msg_threads_reg->msg_threads[i]->nb_msg < nb || nb == 0){
+					n += msg_threads_reg->msg_threads[i]->nb_msg;
+				}
+				else{
+					n += nb;
+				}
+			}
+		}
+		else{
+			n = nb * msg_threads_reg->nb_fils;
+		}
+	}
+	else {
+		if(nb > msg_threads_reg->msg_threads[numfil-1]->nb_msg || nb == 0){
 			n = msg_threads_reg->msg_threads[numfil-1]->nb_msg;
 		}
-		server_message_t *server_msg = create_server_message(3, id, numfil, n);
-		if(!server_msg){
-			perror("Erreur création server_message");
-			goto error;
-		}
-		if(send_server_message(sock, server_msg) == -1){
-			delete_server_message(server_msg);
-			goto error;
-		}
-		delete_server_message(server_msg);
+	}
 
+	server_message_t *server_msg = create_server_message(3, id, f, n);
+	if(!server_msg){
+		perror("Erreur création server_message");
+		goto error;
+	}
+	if(send_server_message(sock, server_msg) == -1){
+		delete_server_message(server_msg);
+		goto error;
+	}
+	delete_server_message(server_msg);
+	if(msg_threads_reg->nb_fils == 0){
+		delete_server_message(error_msg);
+		return 0;
+	}
+
+	if(numfil == 0){
+		for(int i = 0; i < msg_threads_reg->nb_fils; i++){
+			stack_post_t *tmp = msg_threads_reg->msg_threads[i]->posts;
+			if(nb > msg_threads_reg->msg_threads[i]->nb_msg || nb == 0){
+				n = msg_threads_reg->msg_threads[i]->nb_msg;
+			}
+			else{
+				n = nb;
+			}
+			while(tmp != NULL && n > 0){
+				if(send_post(sock, tmp->post) == -1){
+					goto error;
+				}
+				tmp = tmp->next;
+				n--;
+			}
+		}
+	}
+	else {
 		stack_post_t *tmp = msg_threads_reg->msg_threads[numfil-1]->posts;
 		while(tmp != NULL && n > 0){
 			if(send_post(sock, tmp->post) == -1){
