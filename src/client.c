@@ -373,7 +373,7 @@ int demander_billets(int id){
     if (mes -> codereq != 3)
         goto error;
 
-    printf("Codereq : %d, Id : %d, Fil : %d\n", billet->codereq, billet->id, billet->numfil);
+    printf("Codereq : %d, Id : %d, Fil : %d, NB : %d\n", mes->codereq, mes->id, mes->numfil, mes->nb);
 
     for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
         post_t *posts = read_post(sock);

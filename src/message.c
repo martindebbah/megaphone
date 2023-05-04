@@ -102,7 +102,7 @@ client_message_t *create_client_message(int codereq, int id, int numfil, int nb,
     client_message -> id = id;
     client_message -> numfil = (uint16_t) numfil;
     client_message -> nb = (uint16_t) nb;
-    client_message -> datalen = (uint16_t) datalen;
+    client_message -> datalen = (uint8_t) datalen;
 
     // Copie de DATA
     client_message -> data = calloc(1, datalen);
@@ -211,7 +211,7 @@ server_message_t *read_server_message(int fd) {
     }
 
     uint16_t msg[3];
-    if (recv(fd, msg, 48, 0) < 0) {
+    if (recv(fd, msg, 6, 0) < 0) {
         perror("recv server message");
         goto error;
     }
@@ -270,6 +270,30 @@ post_t *read_post(int sock){
     memmove(posts->data, &mes[0], posts->datalen);
 
     return posts;
+}
+
+int send_post(int sock, post_t *posts){
+    char data[23] = {0};
+
+    uint16_t numfil = htons(posts->numfil);
+    memmove(&data[0], &numfil, 2);
+
+    memmove(&data[2], posts->origin, 10);
+    memmove(&data[12], posts->pseudo, 10);
+
+    memmove(&data[22], &(posts->datalen), 1);
+
+    if(send(sock, data, 23, 0) < 0){
+        perror("send");
+        return -1;
+    }
+
+    if(send(sock, posts->data, posts->datalen, 0) < 0){
+        perror("send");
+        return -1;
+    }
+
+    return 0;
 }
 
 void delete_post(post_t *posts) {
