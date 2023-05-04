@@ -485,7 +485,7 @@ msg_thread_t *create_msg_thread(char *pseudo){
 
 	msg_thread -> nb_msg = 0;
 	memmove(msg_thread -> pseudo_init, pseudo, 10);
-	msg_thread -> posts = create_stack_post();
+	msg_thread -> posts = NULL;
 	return msg_thread;
 }
 
@@ -495,9 +495,7 @@ void add_post(msg_thread_t *msg_thread, post_t *post){
 
 	stack_post_t *new_stack = create_stack_post();
 	new_stack -> post = post;
-	if(msg_thread->posts->post != NULL){
-		new_stack->next = msg_thread->posts;
-	}
+	new_stack->next = msg_thread->posts;
 	msg_thread->posts = new_stack;
 	msg_thread -> nb_msg++;
 }
@@ -544,6 +542,7 @@ void delete_msg_threads_register(void){
 		for (int i = 0; i < msg_threads_reg -> nb_fils; i++){
 			delete_msg_thread(msg_threads_reg -> msg_threads[i]);
 		}
+		free(msg_threads_reg -> msg_threads);
 	}
 	free(msg_threads_reg);
 }
