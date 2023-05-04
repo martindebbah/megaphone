@@ -502,13 +502,10 @@ void add_post(msg_thread_t *msg_thread, post_t *post){
 	msg_thread -> nb_msg++;
 }
 
-void delete_msg_thread(msg_thread_t **msg_thread){
+void delete_msg_thread(msg_thread_t *msg_thread){
 	if (!msg_thread)
 		return;
-	for(int i = 0; i < msg_threads_reg->nb_fils; i++){
-		delete_stack_post(msg_threads_reg->msg_threads[i]->posts);
-		free(msg_threads_reg->msg_threads[i]);
-	}
+	delete_stack_post(msg_thread->posts);
 	free(msg_thread);
 }
 
@@ -523,6 +520,7 @@ void create_msg_threads_register(void){
 	msg_threads_reg -> nb_fils = 0;
 }
 
+// verifier le realloc
 void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread){
 	if (!msg_threads_register || !msg_thread)
 		return;
@@ -542,16 +540,15 @@ void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *
 void delete_msg_threads_register(void){
 	if (!msg_threads_reg)
 		return;
-	if (msg_threads_reg -> msg_threads)
-		delete_msg_thread(msg_threads_reg -> msg_threads);
+	if (msg_threads_reg -> msg_threads) {
+		for (int i = 0; i < msg_threads_reg -> nb_fils; i++){
+			delete_msg_thread(msg_threads_reg -> msg_threads[i]);
+		}
+	}
 	free(msg_threads_reg);
 }
 
 int receive_post(int sock, char *client_data){
-	server_message_t *error_msg = create_server_message(31, 0, 0, 0);
-	if (!error_msg) {
-		goto error;
-	}
 	uint16_t header = 0;
 	memmove(&header, &client_data[0], 2);
 	int id = ntohs(header) >> 5;
@@ -570,7 +567,8 @@ int receive_post(int sock, char *client_data){
 	memmove(data, &client_data[7], datalen);
 
 	// si l'utilisateur n'est pas inscrit ou si le fil n'existe pas et n'est pas 0
-	if(get_user(id) == NULL || (msg_threads_reg->nb_fils < numfil && numfil != 0)){
+	char *user = get_user(id);
+	if(user == NULL || (msg_threads_reg->nb_fils < numfil && numfil != 0)){
 		perror("Erreur fil ou utilisateur inexistant");
 		goto error;
 	}
@@ -583,13 +581,13 @@ int receive_post(int sock, char *client_data){
 	}
 
 	post->numfil = numfil;
-	memmove(post->pseudo, get_user(id), 10);
+	memmove(post->pseudo, user, 10);
 	post->pseudo[10] = 0;
 	post->datalen = datalen;
 	post->data = data;
 
 	if(numfil == 0){
-		msg_thread_t *msg_thread = create_msg_thread(get_user(id));
+		msg_thread_t *msg_thread = create_msg_thread(user);
 		memmove(post->origin, msg_thread->pseudo_init, 10);
 		post->origin[10] = 0;
 		add_post(msg_thread, post);
@@ -617,24 +615,21 @@ int receive_post(int sock, char *client_data){
 	}
 
 	if(send_server_message(sock, server_msg) == -1){
+		delete_server_message(server_msg);
 		goto error;
 	}
 
+	delete_server_message(server_msg);
+	free(user);
 	return 0;
 
 	error:
-		// message d'erreur à envoyer au client
-		if(error_msg && send_server_message(sock, error_msg) == -1){
-			perror("Erreur écriture socket");
-		}
+		if(user)
+			free(user);
 		return -1;
 }
 
 int send_posts(int sock, char *client_data){
-	server_message_t *error_msg = create_server_message(31, 0, 0, 0);
-	if (!error_msg) {
-		goto error;
-	}
 	uint16_t header = 0;
 	memmove(&header, &client_data[0], 2);
 	int id = ntohs(header) >> 5;
@@ -646,10 +641,12 @@ int send_posts(int sock, char *client_data){
 	nb = ntohs(nb);
 
 	// si l'utilisateur n'est pas inscrit
-	if(get_user(id) == NULL){
+	char *user = get_user(id);
+	if(user == NULL){
 		perror("Erreur utilisateur inexistant");
 		goto error;
 	}
+	free(user);
 
 	int n = nb;
 	int f = numfil;
@@ -686,7 +683,6 @@ int send_posts(int sock, char *client_data){
 	}
 	delete_server_message(server_msg);
 	if(msg_threads_reg->nb_fils == 0){
-		delete_server_message(error_msg);
 		return 0;
 	}
 
@@ -719,15 +715,9 @@ int send_posts(int sock, char *client_data){
 		}
 	}
 
-	delete_server_message(error_msg);
 	return 0;
 
 	error:
 		// message d'erreur à envoyer au client
-		if(send_server_message(sock, error_msg) == -1){
-			perror("Erreur écriture socket");
-		}
-		if(error_msg)
-			delete_server_message(error_msg);
 		return -1;
 }

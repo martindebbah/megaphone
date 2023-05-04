@@ -59,7 +59,7 @@ msg_thread_t *create_msg_thread(char *pseudo);
 void add_post(msg_thread_t *msg_thread, post_t *post);
 
 // Libère la mémoire allouée pour le fil
-void delete_msg_thread(msg_thread_t **msg_thread);
+void delete_msg_thread(msg_thread_t *msg_thread);
 
 // Créer un registre de fils vide
 void create_msg_threads_register(void);

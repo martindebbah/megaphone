@@ -391,6 +391,9 @@ int send_post(int sock, post_t *posts){
 }
 
 void delete_post(post_t *posts) {
+    if(!posts){
+        return;
+    }
     free(posts->data);
     free(posts);
 }
