@@ -50,7 +50,6 @@ int main(void) {
 	struct sockaddr_in6 addr;
 	memset(&addr, 0, sizeof(addr));
 
-	// IPv4 pour l'instant
 	addr.sin6_family = AF_INET6;
 	addr.sin6_port = htons(PORT);
 	addr.sin6_addr = in6addr_any;
@@ -133,6 +132,227 @@ int main(void) {
 		return 1;
 }
 
+void *serve(void *arg) {
+	int sock = *((int *) arg);
+	// Recv
+	char data[7] = {0};
+	if (recv(sock, data, 7, 0) < 0) { // Lire plus
+		perror("Erreur recv");
+		close(sock);
+		return NULL;
+	}
+
+	uint16_t header = 0;
+	memmove(&header, &data[0], 2);
+	// Récupération du CODEREQ
+	int codereq = ntohs(header) & 0x1F;
+	// Récupération de datalen
+	int datalen = 0;
+	memmove(&datalen, &data[6], 1);
+
+	char data_complete[7 + datalen];
+	memmove(data_complete, data, 7);
+	if(datalen > 0){
+		if(recv(sock, &data_complete[7], datalen, 0) < 0) {
+			perror("Erreur recv");
+			close(sock);
+			return NULL;
+		}
+	}
+
+	//TEST
+
+	//FIN TEST
+
+	// Valeur de retour
+	int err = 0;
+
+	// On gère la requête en fonction de son code
+	switch (codereq) {
+		case 1: // Inscription
+			err = register_new_client(sock, data_complete);
+			break;
+		case 2: // Poster un billet
+			err = receive_post(sock, data_complete);
+			// print_posts();
+			break;
+		case 3: // Liste des n derniers billets
+			err = send_posts(sock, data_complete);
+			break;
+		case 4: // Abonnement à un fil
+			break;
+		case 5: // Ajouter un fichier
+			err = add_file(sock, data_complete);
+			break;
+		case 6: // Télécharger un fichier
+			break;
+		default:
+			err = 1;
+	}
+
+	// Gestion des erreurs
+	if (err)
+		send_error_message(sock);
+	
+	// Fermeture socket client
+	close(sock);
+	// Réécriture du tas pour réutilisabilité du thread
+	int closed = -1;
+	memmove(arg, &closed, sizeof(int));
+	return NULL;
+}
+
+int register_new_client(int sock, char *data) {
+	new_client_t *new_client = NULL;
+	server_message_t *server_message = NULL;
+
+	// Conversion de `data` en `struct new_client_t`
+	new_client = read_to_new_client(data);
+	if (!new_client) {
+		perror("Erreur lecture new_client");
+		goto error;
+	}
+
+	// Ajout de l'utilisateur dans le registre
+	int id = add_user(new_client -> pseudo);
+	if (id == -1) {
+		perror("Erreur ajout utilisateur");
+		goto error;
+	}
+
+	// Création du message de réponse
+	server_message = create_server_message(1, id, 0, 0);
+	if (!server_message) {
+		perror("Erreur création server_message");
+		goto error;
+	}
+
+	// Envoi du message de réponse
+	send_server_message(sock, server_message);
+
+	// Libération des ressources
+	delete_new_client(new_client);
+	delete_server_message(server_message);
+	return 0;
+
+	error:
+		if (new_client)
+			delete_new_client(new_client);
+		if (server_message)
+			delete_server_message(server_message);
+		return 1;
+}
+
+int add_file(int sock, char *data) {
+	client_message_t *client_message = NULL;
+	server_message_t *server_message = NULL;
+	file_t *file = NULL;
+	int udp_sock = -1;
+
+	// Conversion de `data` en `struct client_message`
+	client_message = read_to_client_message(data);
+	if (!client_message) {
+		perror("Erreur add_file client_message");
+		goto error;
+	}
+
+	// Création du message de réponse du serveur
+	server_message = create_server_message(client_message -> codereq, client_message -> id,
+											client_message -> numfil, htons(UDP_PORT));
+	if (!client_message) {
+		perror("Erreur add_file client_message");
+		goto error;
+	}
+
+	// Initialisation du socket UDP en IPv6
+	udp_sock = socket(PF_INET6, SOCK_DGRAM, 0);
+	if (udp_sock < 0) {
+		perror("Erreur init udp_sock");
+		goto error;
+	}
+
+	// Structure adresse IPv6
+	struct sockaddr_in6 addr;
+	memset(&addr, 0, sizeof(addr));
+
+	addr.sin6_family = AF_INET6;
+	addr.sin6_addr = in6addr_any;
+	addr.sin6_port = htons(UDP_PORT);
+
+	// Bind
+	if (bind(udp_sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		perror("Erreur bind udp_sock");
+		goto error;
+	}
+
+	file = create_file(client_message -> data, client_message -> numfil);
+	if (!file) {
+		perror("Erreur file");
+		goto error;
+	}
+
+	// Envoi du message serveur
+	if (send_server_message(sock, server_message) == 1) {
+		perror("Erreur add_file envoi serveur message");
+		goto error;
+	}
+
+	struct timeval udp_timeout;
+	udp_timeout.tv_sec = 5;
+	udp_timeout.tv_usec = 0;
+
+	while (is_complete(file) == 0) {
+		char buffer[516] = {0};
+
+		// Pour ne pas bloquer si un paquet est perdu
+		fd_set set;
+		FD_ZERO(&set);
+		FD_SET(udp_sock, &set);
+		int sel = select(udp_sock + 1, &set, NULL, NULL, &udp_timeout);
+		if (sel <= 0) {
+			perror("select add_file");
+			goto error;
+		}
+
+		int n = recvfrom(udp_sock, buffer, 516, 0, NULL, NULL);
+		if (n < 0) {
+			perror("Erreur recvfrom udp");
+			goto error; // Problème recv client ?
+		}
+
+		udp_t *udp = read_to_udp(buffer);
+		if (!udp) {
+			perror("Erreur udp");
+			delete_udp(udp);
+			goto error; // Problème recv client ?
+		}
+
+		if (add_data(file, udp) == 1) {
+			perror("Erreur ajout udp");
+			delete_udp(udp);
+			goto error; // Problème recv client ?
+		}
+	}
+
+	delete_client_message(client_message);
+	delete_server_message(server_message);
+	delete_file(file); // Ne pas delete mais ajouter au fil
+	close(udp_sock);
+
+	return 0;
+
+	error:
+		if (client_message)
+			delete_client_message(client_message);
+		if (server_message)
+			delete_server_message(server_message);
+		if (file)
+			delete_file(file);
+		if (udp_sock != -1)
+			close(udp_sock);
+		return 1;
+}
+
 void print_fil(msg_thread_t *fil){
 	if(fil == NULL){
 		printf("Fil vide\n");
@@ -148,7 +368,7 @@ void print_fil(msg_thread_t *fil){
 	}
 }
 
-void print_posts(){
+void print_posts(void){
 	for(int i = 0; i < msg_threads_reg->nb_fils; i++){
 		printf("Fils %d :\n", i+1);
 		print_fil(msg_threads_reg->msg_threads[i]);
@@ -227,106 +447,6 @@ void delete_register(void) {
 		free(users_reg -> users);
 	}
 	free(users_reg);
-}
-
-int register_new_client(int sock, char *data) {
-	new_client_t *new_client = NULL;
-	server_message_t *server_message = NULL;
-
-	// Conversion de `data` en `struct new_client_t`
-	new_client = read_to_new_client(data);
-	if (!new_client) {
-		perror("Erreur lecture new_client");
-		goto error;
-	}
-
-	// Ajout de l'utilisateur dans le registre
-	int id = add_user(new_client -> pseudo);
-	if (id == -1) {
-		perror("Erreur ajout utilisateur");
-		goto error;
-	}
-
-	// Création du message de réponse
-	server_message = create_server_message(1, id, 0, 0);
-	if (!server_message) {
-		perror("Erreur création server_message");
-		goto error;
-	}
-
-	// Envoi du message de réponse
-	send_server_message(sock, server_message);
-
-	// Libération des ressources
-	delete_new_client(new_client);
-	delete_server_message(server_message);
-	return 0;
-
-	error:
-		if (new_client)
-			delete_new_client(new_client);
-		if (server_message)
-			delete_server_message(server_message);
-		return 1;
-}
-
-void *serve(void *arg) {
-	int sock = *((int *) arg);
-	// Recv
-	char data[7] = {0};
-	if (recv(sock, data, 7, 0) < 0) { // Lire plus
-		perror("Erreur recv");
-		close(sock);
-		return NULL;
-	}
-
-	uint16_t header = 0;
-	memmove(&header, &data[0], 2);
-	// Récupération du CODEREQ
-	int codereq = ntohs(header) & 0x1F;
-	// Récupération de datalen
-	int datalen = 0;
-	memmove(&datalen, &data[6], 1);
-
-	char data_complete[7 + datalen];
-	memmove(data_complete, data, 7);
-	if(datalen > 0){
-		if(recv(sock, &data_complete[7], datalen, 0) < 0) {
-			perror("Erreur recv");
-			close(sock);
-			return NULL;
-		}
-	}
-
-	//TEST
-
-	//FIN TEST
-
-	// On gère la requête en fonction de son code
-	switch (codereq) {
-		case 1: // Inscription
-			register_new_client(sock, data_complete);
-			break;
-		case 2: // Poster un billet
-			receive_post(sock, data_complete);
-			print_posts();
-			break;
-		case 3: // Liste des n derniers billets
-			send_posts(sock, data_complete);
-			break;
-		case 4: // Abonnement à un fil
-			break;
-		case 5: // Ajouter un fichier
-			break;
-		case 6: // Télécharger un fichier
-			break;
-	}
-	// Fermeture socket client
-	close(sock);
-	// Réécriture du tas pour réutilisabilité du thread
-	int closed = -1;
-	memmove(arg, &closed, sizeof(int));
-	return NULL;
 }
 
 void handler(int sig) {

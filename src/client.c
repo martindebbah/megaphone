@@ -24,6 +24,8 @@ int main(void) {
                 id = read_int();
                 if (id > 0)
                     idNotValid = 0;
+                else
+                    printf("Identifiant 0 non valide\n");
             }
             notLogged = 0;
 
@@ -35,6 +37,7 @@ int main(void) {
                 perror("Erreur read pseudo");
                 return 1;
             }
+            buf[nread - 1] = 0;
             printf("\n");
 
             id = inscription(buf);
@@ -68,6 +71,7 @@ int main(void) {
         printf("Que voulez-vous faire ?\n");
         printf("1. Poster un billet (p)\n");
         printf("2. Lister les n derniers billets (l)\n");
+        printf("4. Ajouter un fichier (a)\n");
         printf("3. Quitter (q)\n");
 
         int nread = read(0, buf, MAX_MESSAGE_SIZE);
@@ -84,6 +88,9 @@ int main(void) {
                 break;
             case 'l':
                 err = demander_billets(id);
+                break;
+            case 'a':
+                err = ajouter_fichier();
                 break;
             case 'q':
                 action = 0;
@@ -402,6 +409,148 @@ int demander_billets(int id){
         if (sock >= 0)
             close(sock);
         return -1;    
+}
+
+int ajouter_fichier(void) {
+    client_message_t *client_message = NULL;
+    server_message_t *server_message = NULL;
+    int file = -1;
+    int sock = -1;
+    int udp_sock = -1;
+    char filename[MAX_MESSAGE_SIZE] = {0};
+
+    int notValid = 1;
+    while (notValid) {
+        printf("Veuillez entrer le chemin vers le fichier que vous voulez ajouter\n");
+        int nread = read(0, filename, MAX_MESSAGE_SIZE);
+        if (nread < 0) {
+            perror("read nom fichier");
+            goto error;
+        }
+        filename[nread - 1] = 0;
+
+        file = open(filename, O_RDONLY);
+        if (file < 0) {
+            printf("Référence invalide\n");
+            memset(filename, 0, MAX_MESSAGE_SIZE);
+        }else {
+            notValid = 0;
+        }
+    }
+
+    notValid = 1;
+    int numfil = -1;
+    while (notValid) {
+        printf("Sur quel fil voulez-vous ajouter ce fichier ?\n");
+        numfil = read_int();
+        if (numfil > 0)
+            notValid = 0;
+        else
+            printf("Fil numéro 0 non valide\n");
+    }
+
+    sock = connect_to_server();
+    if (sock < 0) {
+        perror("connect ajouter_fichier");
+        goto error;
+    }
+
+    client_message = create_client_message(5, id, numfil, 0, strlen(filename), filename);
+    if (!client_message) {
+        perror("client_message ajouter_fichier");
+        goto error;
+    }
+
+    // Envoi du message client
+    if (send_client_message(sock, client_message) < 0) {
+        perror("send client ajouter_fichier");
+        goto error;
+    }
+
+    // Réception du message du serveur
+    server_message = read_server_message(sock);
+    if (!server_message) {
+        perror("server message ajouter_fichier");
+        goto error;
+    }
+
+    // Erreur
+    if (server_message -> codereq != 5)
+        goto error;
+
+    // Création socket UDP
+    udp_sock = socket(PF_INET6, SOCK_DGRAM, 0);
+    if (udp_sock < 0) {
+        perror("socket UDP");
+        goto error;
+    }
+
+    int port = ntohs(server_message -> nb);
+    struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
+
+    addr.sin6_family = AF_INET6;
+    addr.sin6_port = htons(port);
+    if (inet_pton(AF_INET6, ADDR6, &addr.sin6_addr) != 1) {
+        perror("inet_pton ajouetr_fichier");
+        goto error;
+    }
+
+    char buffer[UDP_PACKET_SIZE] = {0};
+    int reading = 1;
+    uint16_t numblock = 1;
+
+    while (reading) {
+        int nread = read(file, buffer, UDP_PACKET_SIZE);
+        if (nread < 0) {
+            perror("read file");
+            goto error;
+        }
+
+        if (nread == 0) { // On est à la fin du fichier
+            reading = 0;
+        }else {
+            udp_t *udp = create_udp(id, numblock, buffer);
+            if (!udp) {
+                perror("create_udp ajouter_fichier");
+                goto error;
+            }
+
+            if (send_udp(udp_sock, addr, udp) != 0) {
+                perror("send udp ajouter_fichier");
+                delete_udp(udp);
+                goto error;
+            }
+
+            delete_udp(udp);
+            numblock++;
+        }
+        memset(buffer, 0, UDP_PACKET_SIZE);
+    }
+
+    // Lire une dernière réponse du serveur ?
+
+    // Libération de la mémoire allouée
+    delete_client_message(client_message);
+    delete_server_message(server_message);
+    close(file);
+    close(sock);
+    close(udp_sock);
+
+    return 0;
+
+    error:
+        if (client_message)
+            delete_client_message(client_message);
+        if (server_message)
+            delete_server_message(server_message);
+        if (file >= 0)
+            close(file);
+        if (sock >= 0)
+            close(sock);
+        if (udp_sock >= 0)
+            close(udp_sock);
+        return -1;
 }
 
 int read_int(void) {

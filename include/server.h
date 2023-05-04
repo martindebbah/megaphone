@@ -28,6 +28,9 @@ typedef struct msg_threads_register_t {
 	int nb_fils;
 } msg_threads_register_t;
 
+// Gère la requête 5 pour ajout d'un fichier
+int add_file(int sock, char *data);
+
 // Alloue la mémoire nécessaire et initialise un registre vide
 void create_register(void);
 
