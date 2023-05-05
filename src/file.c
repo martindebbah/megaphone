@@ -14,6 +14,7 @@ file_t *create_file(char *name, int name_len) {
     }
 
     memmove(file -> name, name, name_len);
+    file -> name_len = name_len;
     return file;
 
     error:
@@ -38,6 +39,85 @@ int is_complete(file_t *file) {
             complete = 1;
     }
     return complete;
+}
+
+char *str_of_size_file(file_t *file) {
+    int i = 0;
+    int size = 0;
+    while (1) {
+        if (!file -> data[i])
+            break;
+        size += strnlen(file -> data[i] -> paquet, 512);
+        i++;
+    }
+    char *str = calloc(8, 1);
+    snprintf(str, 8, "%d", size);
+    return str;
+}
+
+int recv_file(int sock, file_t *file) {
+    struct timeval udp_timeout;
+	udp_timeout.tv_sec = 5;
+	udp_timeout.tv_usec = 0;
+
+    while (is_complete(file) == 0) {
+        char buffer[UDP_PACKET_SIZE + 4] = {0};
+
+        // Pour ne pas bloquer si un paquet est perdu
+		fd_set set;
+		FD_ZERO(&set);
+		FD_SET(sock, &set);
+		int sel = select(sock + 1, &set, NULL, NULL, &udp_timeout);
+		if (sel <= 0) {
+			perror("select add_file");
+			return 1;
+		}
+
+        int n = recvfrom(sock, buffer, 516, 0, NULL, NULL);
+		if (n < 0) {
+			perror("Erreur recvfrom udp");
+			return 1;
+		}
+
+        udp_t *udp = read_to_udp(buffer);
+		if (!udp) {
+			perror("Erreur udp");
+			delete_udp(udp);
+			return 1;
+		}
+
+        if (add_data(file, udp) == 1) {
+			perror("Erreur ajout udp");
+			delete_udp(udp);
+			return 1;
+		}
+    }
+
+    return 0;
+}
+
+int write_file(char *path, file_t *file) {
+    int fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0777);
+	if (fd < 0)
+		return 1;
+
+    int i = 0;
+    while (1) {
+        if (!file -> data[i])
+            break;
+
+        int nwritten = write(fd, file -> data[i] -> paquet, UDP_PACKET_SIZE);
+        if (nwritten < 0) {
+            perror("write_file");
+
+            close(fd);
+            return 1;
+        }
+        i++;
+    }
+
+    close(fd);
+    return 0;
 }
 
 void delete_file(file_t *file) {

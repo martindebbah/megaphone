@@ -11,6 +11,7 @@ void *serve(void *arg);
 
 // Gère la requête 1 pour inscription d'un nouvel utilisateur
 int register_new_client(int sock, char *data);
+
 typedef struct stack_post_t stack_post_t;
 struct stack_post_t {
 	post_t *post;
@@ -75,5 +76,12 @@ int receive_post(int sock, char *client_data);
 
 // Envoyer les n derniers billets d'un fil à un client
 int send_posts(int sock, char *client_data);
+
+// Ajoute un fichier au fil donné
+int add_file_to_thread(uint16_t numfil, file_t *file, int id);
+
+int create_file_dir(void);
+
+void delete_file_dir(void);
 
 #endif

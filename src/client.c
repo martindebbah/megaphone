@@ -443,10 +443,8 @@ int ajouter_fichier(void) {
     while (notValid) {
         printf("Sur quel fil voulez-vous ajouter ce fichier ?\n");
         numfil = read_int();
-        if (numfil > 0)
+        if (numfil >= 0)
             notValid = 0;
-        else
-            printf("Fil numéro 0 non valide\n");
     }
 
     sock = connect_to_server();

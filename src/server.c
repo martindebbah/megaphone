@@ -18,7 +18,11 @@ int main(void) {
 	
 	create_msg_threads_register();
 	if(!msg_threads_reg)
-		exit(1);
+		goto error;
+
+	if (create_file_dir() != 0)
+		goto error;
+
 
 	// Mise en place sigaction pour fermeture propre du serveur
 	struct sigaction action = {0};
@@ -122,6 +126,7 @@ int main(void) {
 	close (server_sock);
 	delete_register();
 	delete_msg_threads_register();
+	delete_file_dir();
 	return 0;
 
 	error:
@@ -129,6 +134,7 @@ int main(void) {
 			close(server_sock);
 		delete_register();
 		delete_msg_threads_register();
+		delete_file_dir();
 		return 1;
 }
 
@@ -256,6 +262,10 @@ int add_file(int sock, char *data) {
 		goto error;
 	}
 
+	// Numfil inexistant
+	if (client_message -> numfil < 0 || client_message -> numfil > msg_threads_reg -> nb_fils)
+		goto error;
+
 	// Création du message de réponse du serveur
 	server_message = create_server_message(client_message -> codereq, client_message -> id,
 											client_message -> numfil, htons(UDP_PORT));
@@ -285,7 +295,7 @@ int add_file(int sock, char *data) {
 		goto error;
 	}
 
-	file = create_file(client_message -> data, client_message -> numfil);
+	file = create_file(client_message -> data, client_message -> datalen);
 	if (!file) {
 		perror("Erreur file");
 		goto error;
@@ -297,46 +307,21 @@ int add_file(int sock, char *data) {
 		goto error;
 	}
 
-	struct timeval udp_timeout;
-	udp_timeout.tv_sec = 5;
-	udp_timeout.tv_usec = 0;
-
-	while (is_complete(file) == 0) {
-		char buffer[516] = {0};
-
-		// Pour ne pas bloquer si un paquet est perdu
-		fd_set set;
-		FD_ZERO(&set);
-		FD_SET(udp_sock, &set);
-		int sel = select(udp_sock + 1, &set, NULL, NULL, &udp_timeout);
-		if (sel <= 0) {
-			perror("select add_file");
-			goto error;
-		}
-
-		int n = recvfrom(udp_sock, buffer, 516, 0, NULL, NULL);
-		if (n < 0) {
-			perror("Erreur recvfrom udp");
-			goto error; // Problème recv client ?
-		}
-
-		udp_t *udp = read_to_udp(buffer);
-		if (!udp) {
-			perror("Erreur udp");
-			delete_udp(udp);
-			goto error; // Problème recv client ?
-		}
-
-		if (add_data(file, udp) == 1) {
-			perror("Erreur ajout udp");
-			delete_udp(udp);
-			goto error; // Problème recv client ?
-		}
+	// Lecture du fichier sur le socket UDP
+	if (recv_file(udp_sock, file) != 0) {
+		perror("lecture file udp");
+		goto error;
 	}
+
+	// Mutex
+	if (add_file_to_thread(client_message -> numfil, file, client_message -> id) == -1) {
+		goto error;
+	}
+	// Fin mutex
 
 	delete_client_message(client_message);
 	delete_server_message(server_message);
-	delete_file(file); // Ne pas delete mais ajouter au fil
+	delete_file(file);
 	close(udp_sock);
 
 	return 0;
@@ -719,4 +704,116 @@ int send_posts(int sock, char *client_data){
 	error:
 		// message d'erreur à envoyer au client
 		return -1;
+}
+
+int add_file_to_thread(uint16_t numfil, file_t *file, int id) {
+	char *user = NULL;
+	msg_thread_t *msg_thread = NULL;
+	post_t *post = NULL;
+	char *file_size = NULL;
+
+	user = get_user(id);
+	if (!user) {
+		perror("get_user add_file");
+		goto error;
+	}
+	if (numfil == 0) { // Création d'un nouveau fil
+		msg_thread = create_msg_thread(user);
+		numfil = (uint16_t) (msg_threads_reg -> nb_fils + 1);
+	}
+
+	char path[20] = {0};
+	snprintf(path, sizeof(path), "fichiers/fil_%d", numfil);
+
+	DIR *dir = opendir(path);
+	if (!dir) {
+		if (mkdir(path, 0755) == -1) {
+			perror("Création répertoire");
+			goto error;
+		}
+	}else {
+		closedir(dir);
+	}
+
+	char file_path[100] = {0};
+	snprintf(file_path, sizeof(file_path), "%s/%s", path, file -> name);
+
+	printf("File_path: %s\n", file_path);
+
+	if (write_file(file_path, file) != 0) {
+		perror("Ecriture fichier");
+		goto error;
+	}
+
+	add_msg_thread(msg_threads_reg, msg_thread); // Vérifier
+
+	post = calloc(1, sizeof(post_t));
+	if (!post) {
+		perror("alloc post add_file");
+		goto error;
+	}
+	post -> numfil = numfil;
+	memmove(post -> origin, msg_threads_reg -> msg_threads[numfil - 1] -> pseudo_init, 10);
+	post -> origin[10] = 0;
+	memmove(post -> pseudo, user, 10);
+	post -> pseudo[10] = 0;
+
+	file_size = str_of_size_file(file);
+	post -> datalen = file -> name_len + strlen(file_size) + 2;
+	post -> data = calloc(post -> datalen, 1);
+	memmove(post -> data, file -> name, file -> name_len);
+	post -> data[file -> name_len] = ' ';
+	memmove(&(post -> data[file -> name_len + 1]), file_size, strlen(file_size));
+	post -> data[post -> datalen - 1] = 'o';
+
+	add_post(msg_threads_reg -> msg_threads[numfil - 1], post); // Vérifier
+
+	free(user);
+	free(file_size);
+
+	return 0;
+
+	error:
+		if (user)
+			free(user);
+		if (msg_thread)
+			delete_msg_thread(msg_thread);
+		if (post)
+			delete_post(post);
+		if (file_size)
+			free(file_size);
+		return 1;
+}
+
+int create_file_dir(void) {
+	if (mkdir("fichiers", 0755) == -1)
+		return 1;
+	return 0;
+}
+
+void supp_rep(char *path) {
+	DIR *dir = opendir(path);
+	struct dirent *entry;
+	if (!dir)
+		return;
+
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry -> d_name, ".") == 0 || strcmp(entry -> d_name, "..") == 0)
+			continue;
+		
+		char entry_path[1024] = {0};
+		snprintf(entry_path, sizeof(entry_path), "%s/%s", path, entry -> d_name);
+		if (entry -> d_type == DT_DIR) {
+			supp_rep(entry_path);
+		}else {
+			unlink(entry_path);
+		}
+	}
+
+	rmdir(path);
+	closedir(dir);
+}
+
+void delete_file_dir(void) {
+	supp_rep("fichiers");
 }

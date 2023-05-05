@@ -28,11 +28,13 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 // En-têtes créées
 #include "message.h"
+#include "file.h"
 #include "server.h"
 #include "client.h"
-#include "file.h"
 
 #endif
