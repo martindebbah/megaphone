@@ -508,15 +508,18 @@ msg_thread_t *create_msg_thread(char *pseudo){
 	return msg_thread;
 }
 
-void add_post(msg_thread_t *msg_thread, post_t *post){
+int add_post(msg_thread_t *msg_thread, post_t *post){
 	if (!msg_thread || !post)
-		return;
+		return -1;
 
 	stack_post_t *new_stack = create_stack_post();
+	if(!new_stack)
+		return -1;
 	new_stack -> post = post;
 	new_stack->next = msg_thread->posts;
 	msg_thread->posts = new_stack;
 	msg_thread -> nb_msg++;
+	return 0;
 }
 
 void delete_msg_thread(msg_thread_t *msg_thread){
@@ -611,7 +614,10 @@ int receive_post(int sock, char *client_data){
 		msg_thread_t *msg_thread = create_msg_thread(user);
 		memmove(post->origin, msg_thread->pseudo_init, 10);
 		post->origin[10] = 0;
-		add_post(msg_thread, post);
+		if(add_post(msg_thread, post) != 0){
+			free(user);
+			goto error;
+		}
 		if(add_msg_thread(msg_threads_reg, msg_thread) != 0){
 			free(user);
 			goto error;
@@ -621,7 +627,10 @@ int receive_post(int sock, char *client_data){
 	else {
 		memmove(post->origin, msg_threads_reg->msg_threads[numfil-1]->pseudo_init, 10);
 		post->origin[10] = 0;
-		add_post(msg_threads_reg->msg_threads[numfil-1], post);
+		if(add_post(msg_threads_reg->msg_threads[numfil-1], post) != 0){
+			free(user);
+			goto error;
+		}
 	}
 
 	// réponse du serveur à envoyer au client

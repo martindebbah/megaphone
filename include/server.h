@@ -56,7 +56,7 @@ void delete_stack_post(stack_post_t *stack_post);
 msg_thread_t *create_msg_thread(char *pseudo);
 
 // Ajoute un post au fil
-void add_post(msg_thread_t *msg_thread, post_t *post);
+int add_post(msg_thread_t *msg_thread, post_t *post);
 
 // Libère la mémoire allouée pour le fil
 void delete_msg_thread(msg_thread_t *msg_thread);
