@@ -64,8 +64,8 @@ void delete_msg_thread(msg_thread_t *msg_thread);
 // Créer un registre de fils vide
 void create_msg_threads_register(void);
 
-// Ajoute un fil au registre
-void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread);
+// Ajoute un fil au registre retourne -1 si erreur 0 sinon
+int add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread);
 
 // Libère la mémoire allouée pour le registre
 void delete_msg_threads_register(void);

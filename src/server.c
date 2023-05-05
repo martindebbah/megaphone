@@ -132,26 +132,45 @@ int main(void) {
 		return 1;
 }
 
+// TODO : Gérer le data[7] cas inscription et autres cas
 void *serve(void *arg) {
 	int sock = *((int *) arg);
 	// Recv
-	char data[7] = {0};
-	if (recv(sock, data, 7, 0) < 0) { // Lire plus
+	char entete[2] = {0};
+	if(recv(sock, entete, 2, 0) < 0){
 		perror("Erreur recv");
 		close(sock);
 		return NULL;
 	}
 
 	uint16_t header = 0;
-	memmove(&header, &data[0], 2);
+	memmove(&header, &entete[0], 2);
 	// Récupération du CODEREQ
 	int codereq = ntohs(header) & 0x1F;
-	// Récupération de datalen
+
+	char data_req1[12] = {0};
+	char data_req_other[7] = {0};
 	int datalen = 0;
-	memmove(&datalen, &data[6], 1);
+	if(codereq == 1){
+		if(recv(sock, data_req1, 12, 0) < 0){
+			perror("Erreur recv");
+			close(sock);
+			return NULL;
+		}
+	}
+	else{
+		if(recv(sock, data_req_other, 7, 0) < 0){
+			perror("Erreur recv");
+			close(sock);
+			return NULL;
+		}
+
+		// Récupération de datalen
+		memmove(&datalen, &data_req_other[6], 1);
+	};
 
 	char data_complete[7 + datalen];
-	memmove(data_complete, data, 7);
+	memmove(data_complete, data_req_other, 7);
 	if(datalen > 0){
 		if(recv(sock, &data_complete[7], datalen, 0) < 0) {
 			perror("Erreur recv");
@@ -170,7 +189,7 @@ void *serve(void *arg) {
 	// On gère la requête en fonction de son code
 	switch (codereq) {
 		case 1: // Inscription
-			err = register_new_client(sock, data_complete);
+			err = register_new_client(sock, data_req1);
 			break;
 		case 2: // Poster un billet
 			err = receive_post(sock, data_complete);
@@ -518,21 +537,21 @@ void create_msg_threads_register(void){
 	msg_threads_reg -> nb_fils = 0;
 }
 
-// verifier le realloc
-void add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread){
+int add_msg_thread(msg_threads_register_t *msg_threads_register, msg_thread_t *msg_thread){
 	if (!msg_threads_register || !msg_thread)
-		return;
+		return -1;
 
 	msg_thread_t **new_msg_threads = realloc(msg_threads_register -> msg_threads, (msg_threads_register -> nb_fils + 2) * sizeof(msg_thread_t *));
 	if (!new_msg_threads) {
 		perror("Erreur ajout msg_thread");
-		return;
+		return -1;
 	}
 
 	new_msg_threads[msg_threads_register -> nb_fils] = msg_thread;
 	new_msg_threads[msg_threads_register -> nb_fils + 1] = NULL;
 	msg_threads_register -> msg_threads = new_msg_threads;
 	msg_threads_register -> nb_fils++;
+	return 0;
 }
 
 void delete_msg_threads_register(void){
@@ -569,6 +588,8 @@ int receive_post(int sock, char *client_data){
 	char *user = get_user(id);
 	if(user == NULL || (msg_threads_reg->nb_fils < numfil && numfil != 0)){
 		perror("Erreur fil ou utilisateur inexistant");
+		if(user)
+			free(user);
 		goto error;
 	}
 
@@ -576,6 +597,7 @@ int receive_post(int sock, char *client_data){
 	post_t *post = malloc(sizeof(post_t));
 	if (!post) {
 		perror("Erreur création post");
+		free(user);
 		goto error;
 	}
 
@@ -590,7 +612,10 @@ int receive_post(int sock, char *client_data){
 		memmove(post->origin, msg_thread->pseudo_init, 10);
 		post->origin[10] = 0;
 		add_post(msg_thread, post);
-		add_msg_thread(msg_threads_reg, msg_thread);
+		if(add_msg_thread(msg_threads_reg, msg_thread) != 0){
+			free(user);
+			goto error;
+		}
 		post->numfil = msg_threads_reg->nb_fils;
 	}
 	else {
@@ -610,11 +635,13 @@ int receive_post(int sock, char *client_data){
 	}
 	server_msg = create_server_message(2, id, numfil_to_send, 0);
 	if(!server_msg){
+		free(user);
 		goto error;
 	}
 
 	if(send_server_message(sock, server_msg) == -1){
 		delete_server_message(server_msg);
+		free(user);
 		goto error;
 	}
 
@@ -623,8 +650,8 @@ int receive_post(int sock, char *client_data){
 	return 0;
 
 	error:
-		if(user)
-			free(user);
+		if(data)
+			free(data);
 		return -1;
 }
 
