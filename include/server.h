@@ -9,6 +9,12 @@ typedef struct users_register_t {
 // Fonction pour threads
 void *serve(void *arg);
 
+// Structure des arguments des threads
+typedef struct thread_args_t {
+	int sock;
+	struct sockaddr_in6 addr;
+} thread_args_t;
+
 // Gère la requête 1 pour inscription d'un nouvel utilisateur
 int register_new_client(int sock, char *data);
 
@@ -31,6 +37,9 @@ typedef struct msg_threads_register_t {
 
 // Gère la requête 5 pour ajout d'un fichier
 int add_file(int sock, char *data);
+
+// Gère la requête 6 pour téléchargement d'un fichier
+int download_file(int sock, char *data, struct sockaddr_in6 addr);
 
 // Alloue la mémoire nécessaire et initialise un registre vide
 void create_register(void);
@@ -80,8 +89,13 @@ int send_posts(int sock, char *client_data);
 // Ajoute un fichier au fil donné
 int add_file_to_thread(uint16_t numfil, file_t *file, int id);
 
+// Crée le répertoire pour stocker les fichiers sur le serveur
 int create_file_dir(void);
 
+// Supprime le répertoire où sont stockés les fichiers
 void delete_file_dir(void);
+
+// Vérifie que la requête d'un client est valide
+int is_client_valid(client_message_t *client_message);
 
 #endif

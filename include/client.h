@@ -23,6 +23,9 @@ int demander_billets(int id);
 // Ajoute un fichier sur le serveur, renvoie 0 en cas de succès, -1 sinon
 int ajouter_fichier(void);
 
+// Télécharge un fichier disponible sur le serveur, renvoie 0 en cas de succès, -1 sinon
+int telecharger_fichier(void);
+
 // Lit l'entrée standard, retourne l'entier positif correspondant, -1 si pas positif ou pas un entier
 int read_int(void);
 

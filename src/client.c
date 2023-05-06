@@ -58,13 +58,13 @@ int main(void) {
 
     // L'utilisateur quitte l'application
     if (id == -1) {
-        printf("Au revoir\n");
+        printf("Au revoir\n\n");
         exit(0);
     }
 
     memset(buf, 0, MAX_MESSAGE_SIZE);
     printf("Votre numéro d'identification est: %d\n", id);
-    printf("Veuillez noter ce numéro pour pouvoir vous reconnecter plus tard\n");
+    printf("Veuillez noter ce numéro pour pouvoir vous reconnecter plus tard\n\n");
 
     int action = 1;
     while(action){
@@ -72,6 +72,7 @@ int main(void) {
         printf("1. Poster un billet (p)\n");
         printf("2. Lister les n derniers billets (l)\n");
         printf("4. Ajouter un fichier (a)\n");
+        printf("5. Télécharger un fichier (t)\n");
         printf("3. Quitter (q)\n");
 
         int nread = read(0, buf, MAX_MESSAGE_SIZE);
@@ -92,23 +93,27 @@ int main(void) {
             case 'a':
                 err = ajouter_fichier();
                 break;
+            case 't':
+                err = telecharger_fichier();
+                break;
             case 'q':
                 action = 0;
                 break;
             default:
                 printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
+                printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
                 printf("ou `q` pour quitter l'application.\n");
                 break;
         }
 
         if (err) {
-            printf("Erreur\n");
+            printf("Une erreur est survenue\n\n");
         }
         memset(buf, 0, MAX_MESSAGE_SIZE);
     }
 
     printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
-    printf("Déconnexion réussie !\n");
+    printf("Déconnexion réussie !\n\n");
 
     // `echo $?` pour valeur de retour
     exit(0);
@@ -380,7 +385,7 @@ int demander_billets(int id){
     if (mes -> codereq != 3)
         goto error;
 
-    printf("Codereq : %d, Id : %d, Fil : %d, NB : %d\n", mes->codereq, mes->id, mes->numfil, mes->nb);
+    // printf("Codereq : %d, Id : %d, Fil : %d, NB : %d\n", mes->codereq, mes->id, mes->numfil, mes->nb);
 
     for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
         post_t *posts = read_post(sock);
@@ -392,6 +397,7 @@ int demander_billets(int id){
         printf("Origine : %s\n", posts->origin);
         printf("Pseudo : %s\n", posts->pseudo);
         printf("Billet : %s\n", posts->data);
+        printf("\n");
         delete_post(posts);
     }
 
@@ -417,26 +423,34 @@ int ajouter_fichier(void) {
     int file = -1;
     int sock = -1;
     int udp_sock = -1;
-    char filename[MAX_MESSAGE_SIZE] = {0};
+    char file_path[MAX_MESSAGE_SIZE] = {0};
 
     int notValid = 1;
     while (notValid) {
         printf("Veuillez entrer le chemin vers le fichier que vous voulez ajouter\n");
-        int nread = read(0, filename, MAX_MESSAGE_SIZE);
+        int nread = read(0, file_path, MAX_MESSAGE_SIZE);
         if (nread < 0) {
             perror("read nom fichier");
             goto error;
         }
-        filename[nread - 1] = 0;
+        printf("\n");
+        file_path[nread - 1] = 0;
 
-        file = open(filename, O_RDONLY);
+        file = open(file_path, O_RDONLY);
         if (file < 0) {
-            printf("Référence invalide\n");
-            memset(filename, 0, MAX_MESSAGE_SIZE);
+            printf("La référence n'est pas valide\n");
+            memset(file_path, 0, MAX_MESSAGE_SIZE);
         }else {
             notValid = 0;
         }
     }
+
+    // On récupère le nom du fichier
+    char *filename = strrchr(file_path, '/');
+    if (filename)
+        filename++;
+    else
+        filename = file_path;
 
     notValid = 1;
     int numfil = -1;
@@ -460,7 +474,7 @@ int ajouter_fichier(void) {
     }
 
     // Envoi du message client
-    if (send_client_message(sock, client_message) < 0) {
+    if (send_client_message(sock, client_message) != 0) {
         perror("send client ajouter_fichier");
         goto error;
     }
@@ -483,50 +497,32 @@ int ajouter_fichier(void) {
         goto error;
     }
 
-    int port = ntohs(server_message -> nb);
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
 
     addr.sin6_family = AF_INET6;
-    addr.sin6_port = htons(port);
+    addr.sin6_port = htons(server_message -> nb);
     if (inet_pton(AF_INET6, ADDR6, &addr.sin6_addr) != 1) {
-        perror("inet_pton ajouetr_fichier");
+        perror("inet_pton ajouter_fichier");
         goto error;
     }
 
-    char buffer[UDP_PACKET_SIZE] = {0};
-    int reading = 1;
-    uint16_t numblock = 1;
-
-    while (reading) {
-        int nread = read(file, buffer, UDP_PACKET_SIZE);
-        if (nread < 0) {
-            perror("read file");
-            goto error;
-        }
-
-        if (nread == 0) { // On est à la fin du fichier
-            reading = 0;
-        }else {
-            udp_t *udp = create_udp(id, numblock, buffer);
-            if (!udp) {
-                perror("create_udp ajouter_fichier");
-                goto error;
-            }
-
-            if (send_udp(udp_sock, addr, udp) != 0) {
-                perror("send udp ajouter_fichier");
-                delete_udp(udp);
-                goto error;
-            }
-
-            delete_udp(udp);
-            numblock++;
-        }
-        memset(buffer, 0, UDP_PACKET_SIZE);
+    if (send_file(udp_sock, addr, file, id) != 0) {
+        perror("send ajouter_fichier");
+        goto error;
     }
 
-    // Lire une dernière réponse du serveur ?
+    delete_server_message(server_message);
+    server_message = read_server_message(sock);
+    if (!server_message) {
+        perror("dernier read server_message ajouter_fichier");
+        goto error;
+    }
+
+    if (server_message -> codereq != 5)
+        goto error;
+
+    printf("Le fichier %s a été ajouté au fil %d\n\n", filename, server_message -> numfil);
 
     // Libération de la mémoire allouée
     delete_client_message(client_message);
@@ -548,6 +544,142 @@ int ajouter_fichier(void) {
             close(sock);
         if (udp_sock >= 0)
             close(udp_sock);
+        return -1;
+}
+
+int telecharger_fichier(void) {
+    int notValid = 1;
+    int numfil = 0;
+    while (notValid) {
+        printf("Entrez le numéro du fil depuis lequel vous souhaitez télécharger le fichier\n");
+        numfil = read_int();
+        if (numfil > 0)
+            notValid = 0;
+        
+        if (numfil == 0)
+            printf("Le fil numéro 0 est invalide\n");
+    }
+
+    char filename[MAX_MESSAGE_SIZE] = {0};
+    printf("Entrez le nom du fichier\n");
+    int nread = read(0, filename, MAX_MESSAGE_SIZE);
+    if (nread < 0) {
+        perror("read telecharger_fichier");
+        return -1;
+    }
+    printf("\n");
+    filename[nread - 1] = 0; // Pour le \n
+
+    // Initialisation pointeurs
+    int sock = -1;
+    int udp_sock = -1;
+    client_message_t *client_message = NULL;
+    server_message_t *server_message = NULL;
+    file_t *file = NULL;
+
+    // Socket TCP
+    sock = connect_to_server();
+    if (sock < 0) {
+        perror("connect telecharger_fichier");
+        goto error;
+    }
+
+    // Initialisation du socket UDP en IPv6
+    udp_sock = socket(PF_INET6, SOCK_DGRAM, 0);
+    if (udp_sock < 0) {
+        perror("socket UDP telecharger_fichier");
+        goto error;
+    }
+
+    // Structure adresse IPv6
+    struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
+
+    addr.sin6_family = AF_INET6;
+    addr.sin6_port = htons(UDP_PORT);
+    addr.sin6_addr = in6addr_any;
+
+    // Bind
+    if (bind(udp_sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+        perror("bind udp socket");
+        goto error;
+    }
+
+    file = create_file(filename, nread - 1);
+    if (!file) {
+        perror("création file");
+        goto error;
+    }
+
+    // Envoi message client
+    client_message = create_client_message(6, id, numfil, UDP_PORT, nread - 1, filename);
+    if (!client_message) {
+        perror("création client_message telecharger_fichier");
+        goto error;;
+    }
+
+    if (send_client_message(sock, client_message) != 0) {
+        perror("send telecharger_fichier");
+        goto error;
+    }
+
+    // Réception réponse serveur
+    server_message = read_server_message(sock);
+    if (!server_message) {
+        perror("read telecharger_fichier");
+        goto error;
+    }
+
+    // Réponse négative du serveur
+    if (server_message -> codereq != 6)
+        goto error;
+
+    // Réception du fichier sur socket UDP
+    if (recv_file(udp_sock, file) != 0) {
+        perror("recv_file");
+        goto error;
+    }
+
+    // Téléchargement du fichier
+    const char *path = "telechargement";
+    DIR *dir = opendir(path);
+    if (!dir) {
+        if (mkdir(path, 0755) != 0) {
+            perror("Création répertoire");
+            goto error;
+        }
+    }else {
+        closedir(dir);
+    }
+
+    char file_path[270] = {0};
+    snprintf(file_path, 270, "%s/%s", path, filename);
+
+    if (write_file(file_path, file) != 0) {
+        perror("Ecriture fichier");
+        goto error;
+    }
+
+    // Libération des pointeurs
+    close(sock);
+    close(udp_sock);
+    delete_client_message(client_message);
+    delete_server_message(server_message);
+    delete_file(file);
+
+    return 0;
+
+    error:
+        if (sock >= 0)
+            close(sock);
+        if (udp_sock >= 0)
+            close(udp_sock);
+        if(client_message)
+            delete_client_message(client_message);
+        if (server_message)
+            delete_server_message(server_message);
+        if (file)
+            delete_file(file);
         return -1;
 }
 

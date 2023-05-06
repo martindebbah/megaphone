@@ -41,6 +41,40 @@ int is_complete(file_t *file) {
     return complete;
 }
 
+int send_file(int sock, struct sockaddr_in6 addr, int file, int id) {
+    int reading = 1;
+    int numblock = 1;
+
+    while (reading) {
+        char buffer[UDP_PACKET_SIZE] = {0};
+        int nread = read(file, buffer, UDP_PACKET_SIZE);
+        if (nread < 0) {
+            perror("read send_file");
+            return 1;
+        }
+
+        if (nread == 0) { // Fin du fichier
+            reading = 0;
+        }else {
+            udp_t *udp = create_udp(id, numblock, buffer);
+            if (!udp) {
+                perror("create_udp send_file");
+                return 1;
+            }
+
+            int sent = send_udp(sock, addr, udp);
+            delete_udp(udp);
+            if (sent != 0) {
+                perror("send_udp send_file");
+                return 1;
+            }
+            numblock++;
+        }
+    }
+
+    return 0;
+}
+
 char *str_of_size_file(file_t *file) {
     int i = 0;
     int size = 0;
@@ -69,7 +103,11 @@ int recv_file(int sock, file_t *file) {
 		FD_SET(sock, &set);
 		int sel = select(sock + 1, &set, NULL, NULL, &udp_timeout);
 		if (sel <= 0) {
-			perror("select add_file");
+            if (errno == 0) { // Timeout
+                printf("Les données ne sont pas complètes\nTéléchargement annulé\n\n");
+                return 0;
+            }
+            perror("select add_file");
 			return 1;
 		}
 
@@ -106,10 +144,13 @@ int write_file(char *path, file_t *file) {
         if (!file -> data[i])
             break;
 
-        int nwritten = write(fd, file -> data[i] -> paquet, UDP_PACKET_SIZE);
+        // Si c'est le dernier bloc, on ne copie pas les '\0'
+        int size = strlen(file -> data[i] -> paquet) < UDP_PACKET_SIZE ? strlen(file -> data[i] -> paquet) : UDP_PACKET_SIZE;
+
+        int nwritten = write(fd, file -> data[i] -> paquet, size);
         if (nwritten < 0) {
             perror("write_file");
-
+            unlink(path);
             close(fd);
             return 1;
         }
