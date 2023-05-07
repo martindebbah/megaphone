@@ -146,4 +146,7 @@ notification_t *create_notification_message(int codereq, int id, int numfil, cha
 
 void delete_notification_message(notification_t *notification_message);
 
+// Retire les dièse à la fin du pseudo
+void remove_hash(char *pseudo);
+
 #endif

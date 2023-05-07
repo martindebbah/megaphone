@@ -1,4 +1,4 @@
-SRCS_CLIENT = src/client.c src/message.c
+SRCS_CLIENT = src/client.c src/message.c src/file.c
 SRCS_SERVER = src/server.c src/message.c src/file.c
 
 CC = cc

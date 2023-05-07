@@ -2,13 +2,21 @@
 
 // Pour lancer le programme : `./server`
 
-// Registre des utilisateurs
+// Registre des utilisateurs et fils de messages
 static users_register_t *users_reg = NULL;
-// Mutex du registre
 static msg_threads_register_t *msg_threads_reg = NULL;
+
+// Mutex du registre des utilisateurs
 static pthread_mutex_t reg_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Mutex du registre des fils
+// static pthread_mutex_t *msg_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // Socket du serveur
 static int server_sock = -1;
+
+// Threads
+pthread_t threads[NTHREADS];
+thread_args_t *args[NTHREADS] = {NULL};
 
 int main(void) {
 	// Initialisation du registre
@@ -18,7 +26,11 @@ int main(void) {
 	
 	create_msg_threads_register();
 	if(!msg_threads_reg)
-		exit(1);
+		goto error;
+
+	if (create_file_dir() != 0)
+		goto error;
+
 
 	// Mise en place sigaction pour fermeture propre du serveur
 	struct sigaction action = {0};
@@ -68,11 +80,15 @@ int main(void) {
 		goto error;
 	}
 
-	pthread_t threads[NTHREADS];
-	int *client_sock[NTHREADS] = {NULL};
+	printf("Serveur en attente de connexion\n");
+
 	while (1) {
+		// Adresse client pour téléchargement fichier
+		struct sockaddr_in6 client_addr;
+		socklen_t len = sizeof(client_addr);
+
 		// Accept
-		int sock = accept(server_sock, NULL, NULL);
+		int sock = accept(server_sock, (struct sockaddr *) &(client_addr), &len);
 		if (sock == -1) {
 			// Fermeture du serveur
 			break;
@@ -81,22 +97,27 @@ int main(void) {
 		int i = 0;
 		// On cherche un thread libre
 		for (; i < NTHREADS; i++) {
-			// Si un thread est terminé (que son socket client associé est NULL ou égal à -1)
-			if (!client_sock[i] || *client_sock[i] == -1) {
+			// Si un thread est terminé (si les arguments ne sont pas alloués ou que le socket vaut -1)
+			if (!args[i] || args[i] -> sock < 0) {
 				// Si le thread i n'existait pas
-				if (!client_sock[i])
-					client_sock[i] = calloc(1, sizeof(int));
-				else // Le thread existait, on le join
+				if (!args[i]) {
+					args[i] = calloc(1, sizeof(thread_args_t));
+					if (!args[i]) {
+						close(sock);
+						goto error;
+					}
+				}else // Le thread existait, on le join
 					pthread_join(threads[i], NULL);
 
-				// Copie du sock client sur le tas
-				memmove(client_sock[i], &sock, sizeof(int));
+				// Copie du sock et de l'adresse client sur le tas
+				memmove(&(args[i] -> sock), &sock, sizeof(int));
+				memmove(&(args[i] -> addr), &client_addr, sizeof(client_addr));
 
 				// Création thread
-				if (pthread_create(&threads[i], NULL, serve, client_sock[i]) == -1) {
+				if (pthread_create(&threads[i], NULL, serve, args[i]) != 0) {
 					perror("Erreur pthread_create");
-					close(*client_sock[i]);
-					free(client_sock[i]);
+					close(sock);
+					free(args[i]);
 				}
 				break;
 			}
@@ -110,11 +131,11 @@ int main(void) {
 
 	// Join tous les threads restants
 	for (int i = 0; i < NTHREADS; i++) {
-		if (client_sock[i]) {
+		if (args[i]) {
 			pthread_join(threads[i], NULL);
-			if (*client_sock[i] != -1)
-				close(*client_sock[i]);
-			free(client_sock[i]);
+			if (args[i] -> sock >= 0)
+				close(args[i] -> sock);
+			free(args[i]);
 		}
 	}
 
@@ -122,24 +143,40 @@ int main(void) {
 	close (server_sock);
 	delete_register();
 	delete_msg_threads_register();
+	delete_file_dir();
 	return 0;
 
 	error:
+		for (int i = 0; i < NTHREADS; i++) {
+			if (args[i]) {
+				pthread_join(threads[i], NULL);
+				if (args[i] -> sock >= 0)
+					close(args[i] -> sock);
+				free(args[i]);
+			}
+		}
 		if (server_sock != -1)
 			close(server_sock);
 		delete_register();
 		delete_msg_threads_register();
+		delete_file_dir();
 		return 1;
 }
 
 // TODO : Gérer le data[7] cas inscription et autres cas
 void *serve(void *arg) {
-	int sock = *((int *) arg);
+	thread_args_t *args = (thread_args_t *) arg;
+	int sock = args -> sock;
+
 	// Recv
 	char entete[2] = {0};
 	if(recv(sock, entete, 2, 0) < 0){
 		perror("Erreur recv");
+		// Fermeture socket client
 		close(sock);
+		// Réécriture du tas pour réutilisabilité du thread
+		int closed = -1;
+		memmove(&(args -> sock), &closed, sizeof(int));
 		return NULL;
 	}
 
@@ -148,40 +185,49 @@ void *serve(void *arg) {
 	// Récupération du CODEREQ
 	int codereq = ntohs(header) & 0x1F;
 
-	char data_req1[12] = {0};
-	char data_req_other[7] = {0};
-	int datalen = 0;
+	char data_req[10] = {0};
+	int datalen = 5;
 	if(codereq == 1){
-		if(recv(sock, data_req1, 12, 0) < 0){
+		if(recv(sock, data_req, 10, 0) < 0){
 			perror("Erreur recv");
+			// Fermeture socket client
 			close(sock);
+			// Réécriture du tas pour réutilisabilité du thread
+			int closed = -1;
+			memmove(&(args -> sock), &closed, sizeof(int));
 			return NULL;
 		}
-	}
-	else{
-		if(recv(sock, data_req_other, 7, 0) < 0){
+	}else{
+		if(recv(sock, data_req, 5, 0) < 0){
 			perror("Erreur recv");
+			// Fermeture socket client
 			close(sock);
+			// Réécriture du tas pour réutilisabilité du thread
+			int closed = -1;
+			memmove(&(args -> sock), &closed, sizeof(int));
 			return NULL;
 		}
 
 		// Récupération de datalen
-		memmove(&datalen, &data_req_other[6], 1);
+		memmove(&datalen, &data_req[4], 1);
 	};
 
 	char data_complete[7 + datalen];
-	memmove(data_complete, data_req_other, 7);
-	if(datalen > 0){
+	memmove(data_complete, entete, 2);
+	if (codereq == 1) {
+		memmove(&data_complete[2], data_req, 10);
+	}else {
+		memmove(&data_complete[2], data_req, 5);
 		if(recv(sock, &data_complete[7], datalen, 0) < 0) {
-			perror("Erreur recv");
+			perror("Erreur recv suite data");
+			// Fermeture socket client
 			close(sock);
+			// Réécriture du tas pour réutilisabilité du thread
+			int closed = -1;
+			memmove(&(args -> sock), &closed, sizeof(int));
 			return NULL;
 		}
 	}
-
-	//TEST
-
-	//FIN TEST
 
 	// Valeur de retour
 	int err = 0;
@@ -189,7 +235,7 @@ void *serve(void *arg) {
 	// On gère la requête en fonction de son code
 	switch (codereq) {
 		case 1: // Inscription
-			err = register_new_client(sock, data_req1);
+			err = register_new_client(sock, data_complete);
 			break;
 		case 2: // Poster un billet
 			err = receive_post(sock, data_complete);
@@ -204,6 +250,7 @@ void *serve(void *arg) {
 			err = add_file(sock, data_complete);
 			break;
 		case 6: // Télécharger un fichier
+			err = download_file(sock, data_complete, args -> addr);
 			break;
 		default:
 			err = 1;
@@ -217,7 +264,7 @@ void *serve(void *arg) {
 	close(sock);
 	// Réécriture du tas pour réutilisabilité du thread
 	int closed = -1;
-	memmove(arg, &closed, sizeof(int));
+	memmove(&(args -> sock), &closed, sizeof(int));
 	return NULL;
 }
 
@@ -249,6 +296,12 @@ int register_new_client(int sock, char *data) {
 	// Envoi du message de réponse
 	send_server_message(sock, server_message);
 
+	char *user = get_user(server_message -> id);
+	remove_hash(user);
+	printf("[%d] Enregistrement de %s avec l'id %d\n",
+			server_message -> codereq, user, server_message -> id);
+	free(user);
+
 	// Libération des ressources
 	delete_new_client(new_client);
 	delete_server_message(server_message);
@@ -275,9 +328,12 @@ int add_file(int sock, char *data) {
 		goto error;
 	}
 
+	if (is_client_valid(client_message) != 0)
+		goto error;
+
 	// Création du message de réponse du serveur
 	server_message = create_server_message(client_message -> codereq, client_message -> id,
-											client_message -> numfil, htons(UDP_PORT));
+											client_message -> numfil, UDP_PORT);
 	if (!client_message) {
 		perror("Erreur add_file client_message");
 		goto error;
@@ -304,58 +360,54 @@ int add_file(int sock, char *data) {
 		goto error;
 	}
 
-	file = create_file(client_message -> data, client_message -> numfil);
+	file = create_file(client_message -> data, client_message -> datalen);
 	if (!file) {
 		perror("Erreur file");
 		goto error;
 	}
 
 	// Envoi du message serveur
-	if (send_server_message(sock, server_message) == 1) {
+	if (send_server_message(sock, server_message) != 0) {
 		perror("Erreur add_file envoi serveur message");
 		goto error;
 	}
 
-	struct timeval udp_timeout;
-	udp_timeout.tv_sec = 5;
-	udp_timeout.tv_usec = 0;
-
-	while (is_complete(file) == 0) {
-		char buffer[516] = {0};
-
-		// Pour ne pas bloquer si un paquet est perdu
-		fd_set set;
-		FD_ZERO(&set);
-		FD_SET(udp_sock, &set);
-		int sel = select(udp_sock + 1, &set, NULL, NULL, &udp_timeout);
-		if (sel <= 0) {
-			perror("select add_file");
-			goto error;
-		}
-
-		int n = recvfrom(udp_sock, buffer, 516, 0, NULL, NULL);
-		if (n < 0) {
-			perror("Erreur recvfrom udp");
-			goto error; // Problème recv client ?
-		}
-
-		udp_t *udp = read_to_udp(buffer);
-		if (!udp) {
-			perror("Erreur udp");
-			delete_udp(udp);
-			goto error; // Problème recv client ?
-		}
-
-		if (add_data(file, udp) == 1) {
-			perror("Erreur ajout udp");
-			delete_udp(udp);
-			goto error; // Problème recv client ?
-		}
+	// Lecture du fichier sur le socket UDP
+	if (recv_file(udp_sock, file) != 0) {
+		perror("lecture file udp");
+		goto error;
 	}
+
+	// Mutex
+	if (add_file_to_thread(client_message -> numfil, file, client_message -> id) == -1) {
+		goto error;
+	}
+	// Fin mutex
+
+	// Dernier message pour valider l'ajout
+	int numfil = client_message -> numfil == 0 ? msg_threads_reg -> nb_fils : client_message -> numfil;
+	delete_server_message(server_message);
+	server_message = create_server_message(client_message -> codereq, client_message -> id,
+											numfil, client_message -> nb);
+	if (!server_message) {
+		perror("dernier server_message add_file");
+		goto error;
+	}
+
+	if (send_server_message(sock, server_message) != 0) {
+		perror("Erreur add_file envoi serveur message");
+		goto error;
+	}
+
+	char filename[MAX_MESSAGE_SIZE] = {0};
+	memmove(filename, file -> name, file -> name_len);
+
+	printf("[%d] Ajout de %s par l'utilisateur %d sur le fil %d\n",
+			client_message -> codereq, filename, client_message -> id, numfil);
 
 	delete_client_message(client_message);
 	delete_server_message(server_message);
-	delete_file(file); // Ne pas delete mais ajouter au fil
+	delete_file(file);
 	close(udp_sock);
 
 	return 0;
@@ -369,6 +421,85 @@ int add_file(int sock, char *data) {
 			delete_file(file);
 		if (udp_sock != -1)
 			close(udp_sock);
+		return 1;
+}
+
+int download_file(int sock, char *data, struct sockaddr_in6 addr) {
+	client_message_t *client_message = NULL;
+	server_message_t *server_message = NULL;
+	int file = -1;
+	int udp_sock = -1;
+	char *filename = NULL;
+
+	// Message client
+	client_message = read_to_client_message(data);
+	if (!client_message)
+		goto error;
+
+	if (is_client_valid(client_message) != 0)
+		goto error;
+
+	char path[100] = {0};
+	filename = calloc(client_message -> datalen + 1, 1);
+	memmove(filename, client_message -> data, client_message -> datalen);
+	snprintf(path, 100, "fichiers/fil_%d/%s", client_message -> numfil, filename);
+	file = open(path, O_RDONLY);
+	if (file < 0) {
+		perror("open file download_file");
+		goto error;
+	}
+
+	// Socket UDP
+	udp_sock = socket(PF_INET6, SOCK_DGRAM, 0);
+	if (udp_sock < 0) {
+		perror("socket UDP download_file");
+		goto error;
+	}
+
+	// Changement du port sur l'adresse client
+	addr.sin6_port = htons(client_message -> nb);
+
+	// Réponse du serveur
+	server_message = create_server_message(client_message -> codereq, client_message -> id,
+											client_message -> numfil, client_message -> nb);
+	if (!server_message) {
+		perror("server_message download_file");
+		goto error;
+	}
+
+	if (send_server_message(sock, server_message) != 0) {
+		perror("send download_file");
+		goto error;
+	}
+
+	// Envoi du fichier
+	if (send_file(udp_sock, addr, file, client_message -> id) != 0) {
+		perror("send_file download_file");
+		// Envoi d'erreur ?
+	}
+
+	printf("[%d] Envoi de %s à l'utilisateur %d depuis le fil %d\n",
+			client_message -> codereq, filename, client_message -> id, client_message -> numfil);
+
+	delete_client_message(client_message);
+	delete_server_message(server_message);
+	free(filename);
+	close(file);
+	close(udp_sock);
+
+	return 0;
+
+	error:
+		if (client_message)
+			delete_client_message(client_message);
+		if (server_message)
+			delete_server_message(server_message);
+		if (file >= 0)
+			close(file);
+		if (udp_sock >= 0)
+			close(udp_sock);
+		if (filename)
+			free(filename);
 		return 1;
 }
 
@@ -592,7 +723,7 @@ int receive_post(int sock, char *client_data){
 	if(user == NULL || (msg_threads_reg->nb_fils < numfil && numfil != 0)){
 		perror("Erreur fil ou utilisateur inexistant");
 		if(user)
-			free(user);
+			free(user); // A ajouter dans error ?
 		goto error;
 	}
 
@@ -755,4 +886,130 @@ int send_posts(int sock, char *client_data){
 	error:
 		// message d'erreur à envoyer au client
 		return -1;
+}
+
+int add_file_to_thread(uint16_t numfil, file_t *file, int id) {
+	char *user = NULL;
+	msg_thread_t *msg_thread = NULL;
+	post_t *post = NULL;
+	char *file_size = NULL;
+
+	user = get_user(id);
+	if (!user) {
+		perror("get_user add_file");
+		goto error;
+	}
+	if (numfil == 0) { // Création d'un nouveau fil
+		msg_thread = create_msg_thread(user);
+		numfil = (uint16_t) (msg_threads_reg -> nb_fils + 1);
+	}
+
+	char path[20] = {0};
+	snprintf(path, sizeof(path), "fichiers/fil_%d", numfil);
+
+	DIR *dir = opendir(path);
+	if (!dir) {
+		if (mkdir(path, 0755) != 0) {
+			perror("Création répertoire");
+			goto error;
+		}
+	}else {
+		closedir(dir);
+	}
+
+	char file_path[100] = {0};
+	snprintf(file_path, sizeof(file_path), "%s/%s", path, file -> name);
+
+	if (write_file(file_path, file) != 0) {
+		perror("Ecriture fichier");
+		goto error;
+	}
+
+	add_msg_thread(msg_threads_reg, msg_thread); // Vérifier
+
+	post = calloc(1, sizeof(post_t));
+	if (!post) {
+		perror("alloc post add_file");
+		goto error;
+	}
+	post -> numfil = numfil;
+	memmove(post -> origin, msg_threads_reg -> msg_threads[numfil - 1] -> pseudo_init, 10);
+	post -> origin[10] = 0;
+	memmove(post -> pseudo, user, 10);
+	post -> pseudo[10] = 0;
+
+	file_size = str_of_size_file(file);
+	post -> datalen = file -> name_len + strlen(file_size) + 2;
+	post -> data = calloc(post -> datalen, 1);
+	memmove(post -> data, file -> name, file -> name_len);
+	post -> data[file -> name_len] = ' ';
+	memmove(&(post -> data[file -> name_len + 1]), file_size, strlen(file_size));
+	post -> data[post -> datalen - 1] = 'o';
+
+	add_post(msg_threads_reg -> msg_threads[numfil - 1], post); // Vérifier
+
+	free(user);
+	free(file_size);
+
+	return 0;
+
+	error:
+		if (user)
+			free(user);
+		if (msg_thread)
+			delete_msg_thread(msg_thread);
+		if (post)
+			delete_post(post);
+		if (file_size)
+			free(file_size);
+		return 1;
+}
+
+int create_file_dir(void) {
+	if (mkdir("fichiers", 0755) != 0)
+		return 1;
+	return 0;
+}
+
+void supp_rep(char *path) {
+	DIR *dir = opendir(path);
+	struct dirent *entry;
+	if (!dir)
+		return;
+
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry -> d_name, ".") == 0 || strcmp(entry -> d_name, "..") == 0)
+			continue;
+		
+		char entry_path[1024] = {0};
+		snprintf(entry_path, sizeof(entry_path), "%s/%s", path, entry -> d_name);
+		if (entry -> d_type == DT_DIR) {
+			supp_rep(entry_path);
+		}else {
+			unlink(entry_path);
+		}
+	}
+
+	rmdir(path);
+	closedir(dir);
+}
+
+void delete_file_dir(void) {
+	supp_rep("fichiers");
+}
+
+int is_client_valid(client_message_t *client_message) {
+	// Numfil inexistant
+	if (client_message -> numfil < 0 || client_message -> numfil > msg_threads_reg -> nb_fils) {
+		printf("Fil inexistant\n");
+		return 1;
+	}
+
+	// ID inexistant
+	if (client_message -> id < 1 || client_message -> id >= users_reg -> new_id) {
+		printf("Id utilisateur inexistant\n");
+		return 1;
+	}
+
+	return 0;
 }

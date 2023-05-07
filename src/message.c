@@ -444,3 +444,12 @@ void delete_subscribe_message(subscribe_t *subscribe_message) {
         delete_server_message(subscribe_message -> server_message);
     free(subscribe_message);
 }
+
+void remove_hash(char *pseudo) {
+    for (int i = 0; i < 10; i++) {
+        if (pseudo[i] == '#') {
+            pseudo[i] = 0;
+            return;
+        }
+    }
+}
