@@ -303,10 +303,10 @@ int poster_billet(int id){
         goto error;
     }
 
-    printf("Code requête : %d\n", mes -> codereq);
-    printf("Id : %d\n", mes -> id);
+    // printf("Code requête : %d\n", mes -> codereq);
+    // printf("Id : %d\n", mes -> id);
     if(mes -> codereq == 2) {
-        printf("Message posté !\n");
+        printf("Message posté sur le fil %d !\n\n", mes -> numfil);
     }else {
         goto error;
     }
@@ -393,13 +393,21 @@ int demander_billets(int id){
             perror("Erreur lecture billet");
             goto error;
         }
+        remove_hash(posts -> origin);
+        remove_hash(posts -> pseudo);
         printf("Fil : %d\n", posts->numfil);
-        printf("Origine : %s\n", posts->origin);
-        printf("Pseudo : %s\n", posts->pseudo);
-        printf("Billet : %s\n", posts->data);
+        printf("Initiateur du fil : %s\n", posts->origin);
+        printf("Auteur du message : %s\n", posts->pseudo);
+        char data[posts -> datalen + 1];
+        memmove(data, posts -> data, posts -> datalen);
+        data[posts -> datalen] = 0;
+        printf("Billet : %s\n", data);
         printf("\n");
         delete_post(posts);
     }
+
+    if (mes -> nb == 0)
+        printf("Il n'y a pas de message\n\n");
 
     delete_client_message(billet);
     delete_server_message(mes);
@@ -659,6 +667,8 @@ int telecharger_fichier(void) {
         perror("Ecriture fichier");
         goto error;
     }
+
+    printf("Le fichier %s a bien été téléchargé, vous le retrouverez dans le dossier `telechargement`\n\n", filename);
 
     // Libération des pointeurs
     close(sock);

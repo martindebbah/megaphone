@@ -186,7 +186,7 @@ void *serve(void *arg) {
 	int codereq = ntohs(header) & 0x1F;
 
 	char data_req[10] = {0};
-	int datalen = 5;
+	int datalen = 5; // Dans le cas où on réécrit pas la valeur (inscription) on veut 12 octets
 	if(codereq == 1){
 		if(recv(sock, data_req, 10, 0) < 0){
 			perror("Erreur recv");
@@ -218,7 +218,7 @@ void *serve(void *arg) {
 		memmove(&data_complete[2], data_req, 10);
 	}else {
 		memmove(&data_complete[2], data_req, 5);
-		if(recv(sock, &data_complete[7], datalen, 0) < 0) {
+		if(datalen > 0 && recv(sock, &data_complete[7], datalen, 0) < 0) {
 			perror("Erreur recv suite data");
 			// Fermeture socket client
 			close(sock);
@@ -701,166 +701,154 @@ void delete_msg_threads_register(void){
 }
 
 int receive_post(int sock, char *client_data){
-	uint16_t header = 0;
-	memmove(&header, &client_data[0], 2);
-	int id = ntohs(header) >> 5;
-	int numfil = 0;
-	memmove(&numfil, &client_data[2], 2);
-	numfil = ntohs(numfil);
-	int nb = 0;
-	memmove(&nb, &client_data[4], 2);
-	nb = ntohs(nb);
-	int datalen = 0;
-	memmove(&datalen, &client_data[6], 1);
-	char *data = calloc(datalen, sizeof(char));
-	if (!data) {
+	client_message_t *client_message = NULL;
+	server_message_t *server_msg = NULL;
+	post_t *post = NULL;
+	char *user = NULL;
+	
+	client_message = read_to_client_message(client_data);
+	if (!client_message) {
+		perror("client_message receive_post");
 		goto error;
 	}
-	memmove(data, &client_data[7], datalen);
 
-	// si l'utilisateur n'est pas inscrit ou si le fil n'existe pas et n'est pas 0
-	char *user = get_user(id);
-	if(user == NULL || (msg_threads_reg->nb_fils < numfil && numfil != 0)){
-		perror("Erreur fil ou utilisateur inexistant");
-		if(user)
-			free(user); // A ajouter dans error ?
+	if (is_client_valid(client_message) != 0)
 		goto error;
-	}
+
+	user = get_user(client_message -> id);
 
 	// stocker le post du client
-	post_t *post = malloc(sizeof(post_t));
+	post = malloc(sizeof(post_t));
 	if (!post) {
 		perror("Erreur création post");
-		free(user);
 		goto error;
 	}
 
-	post->numfil = numfil;
+	post->numfil = client_message -> numfil;
 	memmove(post->pseudo, user, 10);
 	post->pseudo[10] = 0;
-	post->datalen = datalen;
-	post->data = data;
+	post->datalen = client_message -> datalen;
+	post -> data = calloc(post -> datalen, 1);
+	memmove(post -> data, client_message -> data, post -> datalen);
 
-	if(numfil == 0){
+	if(client_message -> numfil == 0){
 		msg_thread_t *msg_thread = create_msg_thread(user);
 		memmove(post->origin, msg_thread->pseudo_init, 10);
 		post->origin[10] = 0;
 		if(add_post(msg_thread, post) != 0){
-			free(user);
 			goto error;
 		}
 		if(add_msg_thread(msg_threads_reg, msg_thread) != 0){
-			free(user);
 			goto error;
 		}
 		post->numfil = msg_threads_reg->nb_fils;
 	}
 	else {
-		memmove(post->origin, msg_threads_reg->msg_threads[numfil-1]->pseudo_init, 10);
+		memmove(post->origin, msg_threads_reg->msg_threads[client_message -> numfil-1]->pseudo_init, 10);
 		post->origin[10] = 0;
-		if(add_post(msg_threads_reg->msg_threads[numfil-1], post) != 0){
-			free(user);
+		if(add_post(msg_threads_reg->msg_threads[client_message -> numfil-1], post) != 0){
 			goto error;
 		}
 	}
 
 	// réponse du serveur à envoyer au client
-	server_message_t *server_msg;
-	uint16_t numfil_to_send;
-	if(numfil == 0){
-		numfil_to_send = htons(msg_threads_reg->nb_fils);
-	}
-	else{
-		numfil_to_send = htons(numfil);
-	}
-	server_msg = create_server_message(2, id, numfil_to_send, 0);
-	if(!server_msg){
-		free(user);
+	int numfil = client_message -> numfil == 0 ? msg_threads_reg -> nb_fils : client_message -> numfil;
+
+	server_msg = create_server_message(2, client_message -> id, numfil, 0);
+	if(!server_msg) {
+		perror("server_message receive_post");
 		goto error;
 	}
 
-	if(send_server_message(sock, server_msg) == -1){
-		delete_server_message(server_msg);
-		free(user);
+	if(send_server_message(sock, server_msg) == -1) {
+		perror("send server_message receive_post");
 		goto error;
 	}
 
+	printf("[%d] Ajout d'un post de l'utilisateur %d au fil %d\n",
+			server_msg -> codereq, server_msg -> id, server_msg -> numfil);
+
+	delete_client_message(client_message);
 	delete_server_message(server_msg);
 	free(user);
 	return 0;
 
 	error:
-		if(data)
-			free(data);
+		if (client_message)
+			delete_client_message(client_message);
+		if (post)
+			delete_post(post);
+		if (server_msg)
+			delete_server_message(server_msg);
+		if (user)
+			free(user);
 		return -1;
 }
 
 int send_posts(int sock, char *client_data){
-	uint16_t header = 0;
-	memmove(&header, &client_data[0], 2);
-	int id = ntohs(header) >> 5;
-	int numfil = 0;
-	memmove(&numfil, &client_data[2], 2);
-	numfil = ntohs(numfil);
-	int nb = 0;
-	memmove(&nb, &client_data[4], 2);
-	nb = ntohs(nb);
-
-	// si l'utilisateur n'est pas inscrit
-	char *user = get_user(id);
-	if(user == NULL){
-		perror("Erreur utilisateur inexistant");
+	server_message_t *server_msg = NULL;
+	client_message_t *client_message = read_to_client_message(client_data);
+	if (!client_message) {
+		perror("client_message send_posts");
 		goto error;
 	}
-	free(user);
 
-	int n = nb;
-	int f = numfil;
-	if(numfil == 0){
+	if (is_client_valid(client_message) != 0)
+		goto error;
+
+	int n = client_message -> nb;
+	int f = client_message -> numfil;
+	if(client_message -> numfil == 0){
 		f = msg_threads_reg->nb_fils;
 		if(n == 0){
 			for(int i = 0; i < msg_threads_reg->nb_fils; i++){
-				if(msg_threads_reg->msg_threads[i]->nb_msg < nb || nb == 0){
+				if(msg_threads_reg->msg_threads[i]->nb_msg < client_message -> nb || client_message -> nb == 0){
 					n += msg_threads_reg->msg_threads[i]->nb_msg;
 				}
 				else{
-					n += nb;
+					n += client_message -> nb;
 				}
 			}
 		}
 		else{
-			n = nb * msg_threads_reg->nb_fils;
+			n = client_message -> nb * msg_threads_reg->nb_fils;
 		}
 	}
 	else {
-		if(nb > msg_threads_reg->msg_threads[numfil-1]->nb_msg || nb == 0){
-			n = msg_threads_reg->msg_threads[numfil-1]->nb_msg;
+		if(client_message -> nb > msg_threads_reg->msg_threads[client_message -> numfil-1]->nb_msg || client_message -> nb == 0){
+			n = msg_threads_reg->msg_threads[client_message -> numfil-1]->nb_msg;
 		}
 	}
 
-	server_message_t *server_msg = create_server_message(3, id, f, n);
+	server_msg = create_server_message(3, client_message -> id, f, n);
 	if(!server_msg){
 		perror("Erreur création server_message");
 		goto error;
 	}
 	if(send_server_message(sock, server_msg) == -1){
-		delete_server_message(server_msg);
 		goto error;
 	}
-	delete_server_message(server_msg);
-	if(msg_threads_reg->nb_fils == 0){
-		return 0;
-	}
-
-	if(numfil == 0){
-		for(int i = 0; i < msg_threads_reg->nb_fils; i++){
-			stack_post_t *tmp = msg_threads_reg->msg_threads[i]->posts;
-			if(nb > msg_threads_reg->msg_threads[i]->nb_msg || nb == 0){
-				n = msg_threads_reg->msg_threads[i]->nb_msg;
+	if(msg_threads_reg->nb_fils > 0){
+		if(client_message -> numfil == 0){
+			for(int i = 0; i < msg_threads_reg->nb_fils; i++){
+				stack_post_t *tmp = msg_threads_reg->msg_threads[i]->posts;
+				if(client_message -> nb > msg_threads_reg->msg_threads[i]->nb_msg || client_message -> nb == 0){
+					n = msg_threads_reg->msg_threads[i]->nb_msg;
+				}
+				else{
+					n = client_message -> nb;
+				}
+				while(tmp != NULL && n > 0){
+					if(send_post(sock, tmp->post) == -1){
+						goto error;
+					}
+					tmp = tmp->next;
+					n--;
+				}
 			}
-			else{
-				n = nb;
-			}
+		}
+		else {
+			stack_post_t *tmp = msg_threads_reg->msg_threads[client_message -> numfil-1]->posts;
 			while(tmp != NULL && n > 0){
 				if(send_post(sock, tmp->post) == -1){
 					goto error;
@@ -870,20 +858,20 @@ int send_posts(int sock, char *client_data){
 			}
 		}
 	}
-	else {
-		stack_post_t *tmp = msg_threads_reg->msg_threads[numfil-1]->posts;
-		while(tmp != NULL && n > 0){
-			if(send_post(sock, tmp->post) == -1){
-				goto error;
-			}
-			tmp = tmp->next;
-			n--;
-		}
-	}
+
+	printf("[%d] Envoi de %d messages à l'utilisateur %d\n",
+			server_msg -> codereq, server_msg -> nb, server_msg -> id);
+
+	delete_client_message(client_message);
+	delete_server_message(server_msg);
 
 	return 0;
 
 	error:
+		if (client_message)
+			delete_client_message(client_message);
+		if (server_msg)
+			delete_server_message(server_msg);
 		// message d'erreur à envoyer au client
 		return -1;
 }
