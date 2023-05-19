@@ -7,7 +7,7 @@ static users_register_t *users_reg = NULL;
 static msg_threads_register_t *msg_threads_reg = NULL;
 
 // Mutex du registre des utilisateurs
-static pthread_mutex_t reg_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t users_reg_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Mutex du registre des fils
 // static pthread_mutex_t *msg_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -538,14 +538,16 @@ void create_register(void) {
 }
 
 int add_user(char *pseudo) {
+	if (pseudo[0] == '#')
+		return -1;
 	// Verrouillage zone critique
-	pthread_mutex_lock(&reg_mutex);
+	pthread_mutex_lock(&users_reg_mutex);
 
 	// Réallocation du tableau pour admettre un nouvel utilisateur
 	char **new_users = realloc(users_reg -> users, users_reg -> new_id * sizeof(char *));
 	if (!new_users) {
 		perror("Erreur ajout user");
-		pthread_mutex_unlock(&reg_mutex);
+		pthread_mutex_unlock(&users_reg_mutex);
 		return -1;
 	}
 	users_reg -> users = new_users;
@@ -554,7 +556,7 @@ int add_user(char *pseudo) {
 	users_reg -> users[users_reg -> new_id - 1] = calloc(11, 1);
 	if (!users_reg -> users[users_reg -> new_id - 1]) {
 		perror("Erreur alloc new user");
-		pthread_mutex_unlock(&reg_mutex);
+		pthread_mutex_unlock(&users_reg_mutex);
 		return -1;
 	}
 
@@ -565,7 +567,7 @@ int add_user(char *pseudo) {
 	users_reg -> new_id = id + 1;
 	
 	// Déverrouillage zone critique
-	pthread_mutex_unlock(&reg_mutex);
+	pthread_mutex_unlock(&users_reg_mutex);
 
 	return id;
 }

@@ -2,9 +2,7 @@
 #define MEGAPHONE_H
 
 // Adresses connexion client et ports
-#define ADDR4       "127.0.0.1"
-#define ADDR6       "::1"
-#define TYPE        4
+#define PORT_STR    "30000"
 #define PORT        30000
 #define UDP_PORT    30001
 

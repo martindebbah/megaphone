@@ -4,12 +4,6 @@
 // Crée une connexion avec le serveur et renvoie la socket associée (-1 en cas d'erreur)
 int connect_to_server(void);
 
-// Crée une connexion IPv4 avec le serveur et renvoie la socket associée (-1 en cas d'erreur)
-int connect_to_server_4(void);
-
-// Crée une connexion IPv6 avec le serveur et renvoie la socket associée (-1 en cas d'erreur)
-int connect_to_server_6(void);
-
 // Envoie une requête d'inscription pour le pseudo donné.
 // Retourne l'id attribué par le serveur en cas de succès, -1 sinon.
 int inscription(char *pseudo);

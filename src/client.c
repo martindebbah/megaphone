@@ -4,8 +4,17 @@
 
 // Identifiant de l'utilisateur
 static int id = -1;
+char *hostname;
+char hostaddr[INET6_ADDRSTRLEN] = {0};
 
-int main(void) {
+int main(int argc, char **argv) {
+    // hostname
+    if (argc < 2) {
+        printf("Il manque le nom de domaine\n");
+        return 1;
+    }
+    hostname = argv[1];
+
     char buf[MAX_MESSAGE_SIZE] = {0};
     int notLogged = 1;
     while (notLogged) { // Boucle tant que pas d'identitfiant
@@ -120,72 +129,40 @@ int main(void) {
 }
 
 int connect_to_server(void) {
-    if (TYPE == 4) // IPv4
-        return connect_to_server_4();
-    if (TYPE == 6) // IPv6
-        return connect_to_server_6();
-    // Erreur
-    return -1;
-}
+    int sock = -1;
+    struct addrinfo hints, *r, *p;
+    memset(&hints, 0, sizeof(hints));
+    // Connexion IPv4 ou IPv6
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
 
-int connect_to_server_4(void) {
-    // Socket client
-    int sock = socket(PF_INET, SOCK_STREAM, 0);
-    if (sock < 0){
-        perror("Erreur socket IPv4");
+    if (getaddrinfo(hostname, PORT_STR, &hints, &r) != 0 || !r)
         return -1;
+
+    p = r;
+
+    while (p) {
+        if ((sock = socket(p -> ai_family, p -> ai_socktype, p -> ai_protocol)) > 0) {
+            if (connect(sock, p -> ai_addr, p -> ai_addrlen) == 0)
+                break;
+
+            close(sock);
+            sock = -1;
+        }
+        p = p -> ai_next;
     }
 
-    // Structure adresse IPv4
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(PORT);
-
-    if (inet_pton(AF_INET, ADDR4, &addr.sin_addr) != 1) {
-        perror("Erreur inet_pton IPv4");
-        close(sock);
-        return -1;
+    if (p) { // On enregistre l'adresse pour socket UDP
+        if (p -> ai_family == AF_INET) {
+            struct sockaddr_in *addr = (struct sockaddr_in *) p -> ai_addr;
+            inet_ntop(AF_INET, &(addr -> sin_addr), hostaddr, INET_ADDRSTRLEN);
+        }else {
+            struct sockaddr_in6 *adr6 = (struct sockaddr_in6 *) p -> ai_addr;
+            inet_ntop(AF_INET6, &(adr6->sin6_addr), hostaddr, INET6_ADDRSTRLEN);
+        }
     }
 
-    // Connexion
-    if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
-        perror("Erreur connexion IPv4");
-        close(sock);
-        return -1;
-    }
-
-    return sock;
-}
-
-int connect_to_server_6(void) {
-    // Socket client
-    int sock = socket(PF_INET6, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror("Erreur socket IPv6");
-        return -1;
-    }
-
-    // Structure adresse IPv6
-    struct sockaddr_in6 addr;
-    memset(&addr, 0, sizeof(addr));
-
-    addr.sin6_family = AF_INET6;
-    addr.sin6_port = htons(PORT);
-
-    if (inet_pton(AF_INET6, ADDR6, &addr.sin6_addr) != 1) {
-        perror("Erreur inet_pton IPv6");
-        close(sock);
-        return -1;
-    }
-
-    // Connexion
-    if (connect(sock, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
-        perror("Erreur connexion IPv6");
-        close(sock);
-        return -1;
-    }
+    freeaddrinfo(r);
 
     return sock;
 }
@@ -385,8 +362,6 @@ int demander_billets(int id){
     if (mes -> codereq != 3)
         goto error;
 
-    // printf("Codereq : %d, Id : %d, Fil : %d, NB : %d\n", mes->codereq, mes->id, mes->numfil, mes->nb);
-
     for(int i = 0; i < mes->nb; i++){ // le nombre de billets que va envoyer le serveur
         post_t *posts = read_post(sock);
         if(posts == NULL){
@@ -510,7 +485,7 @@ int ajouter_fichier(void) {
 
     addr.sin6_family = AF_INET6;
     addr.sin6_port = htons(server_message -> nb);
-    if (inet_pton(AF_INET6, ADDR6, &addr.sin6_addr) != 1) {
+    if (inet_pton(AF_INET6, hostaddr, &addr.sin6_addr) != 1) {
         perror("inet_pton ajouter_fichier");
         goto error;
     }
