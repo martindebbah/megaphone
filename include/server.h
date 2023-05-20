@@ -28,6 +28,8 @@ typedef struct msg_thread_t {
 	int nb_msg;
 	char pseudo_init[10];
 	stack_post_t *posts;
+	char * multicast_ip;
+	int	id[1024];
 } msg_thread_t;
 
 typedef struct msg_threads_register_t {
@@ -97,5 +99,9 @@ void delete_file_dir(void);
 
 // Vérifie que la requête d'un client est valide
 int is_client_valid(client_message_t *client_message);
+
+int register_abonnement(int sock, char *data);
+
+int	send_notification(int type, int fil, int id, char *pseudo);
 
 #endif

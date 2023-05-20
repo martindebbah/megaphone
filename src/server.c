@@ -255,6 +255,7 @@ void *serve(void *arg) {
 			err = send_posts(sock, data_complete);
 			break;
 		case 4: // Abonnement à un fil
+			err = register_abonnement(sock, data_complete);
 			break;
 		case 5: // Ajouter un fichier
 			err = add_file(sock, data_complete);
@@ -1030,3 +1031,147 @@ int is_client_valid(client_message_t *client_message) {
 
 	return 0;
 }
+
+int register_abonnement(int sock, char *data) {
+	// Socket avec protocol UDP
+	// enlever ce socket
+	int socket_udp = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (!socket_udp) {
+		perror("socket");
+		return 1;
+	}
+
+	// Je crée mon groupe pour le socket du fil
+	struct sockaddr_in6 grsock;
+	memset(&grsock, 0, sizeof(grsock));
+	grsock.sin6_family = AF_INET6;
+	grsock.sin6_port = htons(PORT);
+
+	// Je fais en sorte que le socket soit reutilisable
+
+	client_message_t *mes = read_to_client_message(data);
+	if (is_client_valid(mes) != 0) {
+		delete_client_message(mes);
+		
+		close(socket_udp);
+		return 1;
+	}
+	// check le numfil si pas existant (ou 0) je me casse
+	int numfil = mes  -> numfil;
+
+	if (numfil == 0 || numfil > msg_threads_reg -> nb_fils) {
+		printf("Mauvais numero de fil\n");
+		close(socket_udp);
+		delete_client_message(mes);
+		return 1;
+	}
+	char *ipv6 = NULL;
+	if (msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip == NULL)
+	{
+		ipv6 = getAvailableMulticastIPv6();
+		msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip = ipv6;
+	}
+	else
+		ipv6 = msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip;
+	int ret = inet_pton(AF_INET6, ipv6, &grsock.sin6_addr);
+	if (ret != 1) {
+		perror("Erreur inet_pton IPv6");
+		
+		close(socket_udp);
+		return 1;
+	}
+
+	char **split = ft_split(ipv6, ':');
+	int addr[8] = {0};
+	for (int i = 0; i < 8; i++)
+	{
+		addr[i] = ft_atoi_base(split[i], "0123456789abcdef");
+		free(split[i]);
+	}
+	free(split);
+	subscribe_t *send_subscribe = create_subscribe_message(4, mes -> id, 0, numfil, addr);
+	if (!send_subscribe)
+	{
+		perror("error when creating sub_message");
+		return 1;
+	}
+
+	if (send_subscribe_message(sock, send_subscribe))
+	{
+		perror("error send subscribe message\n");
+		return 1;
+	}
+	printf("[%d] Abonnement de l'utilisateur %d au fil %d\n", send_subscribe -> server_message -> codereq, send_subscribe -> server_message -> id, numfil);
+	char *pseudo = get_user(send_subscribe -> server_message -> id);
+	send_notification(0, numfil, send_subscribe -> server_message -> id, pseudo);
+	free(pseudo);
+	delete_subscribe_message(send_subscribe);
+	delete_client_message(mes);
+	
+	close(socket_udp);
+	return 0;
+}
+
+int	send_notification(int type, int fil, int id, char *pseudo){
+	int numfil = 0;
+	if (fil == 0)
+		numfil = 1;
+	else
+		numfil = fil;
+	if (msg_threads_reg && msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip == NULL)
+		return 1;
+	char *ipv6 = msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip;
+	int socket_udp = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (!socket_udp) {
+		perror("socket");
+		return 1;
+	}
+	unsigned int ifindex = if_nametoindex("eth0");
+	if (!ifindex) {
+		perror("erreur nom d'interface");
+		close(socket_udp);
+	}
+	// Et qu'il accepte le multicast
+	if(setsockopt(socket_udp, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifindex, sizeof(ifindex)) < 0) {
+		perror("erreur initialisation de l’interface locale");
+		close(socket_udp);
+		return 1;
+	}
+	struct sockaddr_in6 grsock;
+	memset(&grsock, 0, sizeof(grsock));
+	grsock.sin6_family = AF_INET6;
+	grsock.sin6_port = htons(PORT);
+		
+	int ret = inet_pton(AF_INET6, ipv6, &grsock.sin6_addr);
+	if (ret != 1) {
+		perror("Erreur inet_pton IPv6");
+		close(socket_udp);
+		return 1;
+	}
+	char buf[20];
+	bzero(buf, 20);
+	if (type == 0) 
+		sprintf(buf, "nouvel abonné");
+	else if (type == 1)
+		sprintf(buf, "nouveau post");
+	else 
+		sprintf(buf, "nouveau fichier");
+	char good_pseudo[10] = {0};
+	snprintf(good_pseudo, 10, "%s", pseudo);
+	notification_t *notif = create_notification_message(4, 0, numfil, good_pseudo, buf);
+	if (!notif) {
+		perror("error in creation of notification message");
+		close(socket_udp);
+		return 1;
+	}
+	int ret_sendto = send_notification_message(socket_udp, notif, grsock);
+	if (ret_sendto < 0) {
+		perror("sendto in notification");
+		close(socket_udp);
+		return 1;
+	}
+	delete_notification_message(notif);
+	close(socket_udp);
+	return 0;
+}
+

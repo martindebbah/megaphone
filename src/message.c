@@ -398,7 +398,7 @@ void delete_post(post_t *posts) {
     free(posts);
 }
 
-subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int addrmult) {
+subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int	addrmult[8]) {
     subscribe_t *subscribe_message = calloc(1, sizeof(subscribe_t));
     if (!subscribe_message) {
         perror("alloc subscribe_message");
@@ -411,9 +411,10 @@ subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, i
         perror("server_message in subscribe_message");
         goto error;
     }
-
+	printf("NUM FIL %d\n", subscribe_message -> server_message -> numfil);
     // Mise au format big-endian de ADDRMULT
-    subscribe_message -> addrmult = htonl(addrmult);
+	for (int i = 0; i < 8; i++)
+    	subscribe_message -> addrmult[i] = htons(addrmult[i]);
 
     return subscribe_message;
 
@@ -424,17 +425,86 @@ subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, i
 }
 
 int send_subscribe_message(int fd, subscribe_t *subscribe_message) {
-    if (send_server_message(fd, subscribe_message -> server_message) /* == 1 */) {
-        perror("write server_message in subscribe_message");
+
+	// Mise au format big-endian de l'en-tête
+	uint16_t header = create_header(subscribe_message -> server_message -> codereq, subscribe_message -> server_message -> id);
+    // Mise au format big-endian de NUMFIL
+	uint16_t numfil = htons(subscribe_message -> server_message -> numfil);
+    // Mise au format big-endian de NB
+	uint16_t nb = htons(subscribe_message -> server_message -> nb);
+
+    // Copie du message dans un tableau de char
+	char data[22];
+
+	memmove(&data[0], &header, 2);
+	memmove(&data[2], &numfil, 2);
+	memmove(&data[4], &nb, 2);
+	memmove(&data[6], &(subscribe_message -> addrmult[0]), 2);
+	memmove(&data[8], &(subscribe_message -> addrmult[1]), 2);
+	memmove(&data[10], &subscribe_message -> addrmult[2], 2);
+	memmove(&data[12], &subscribe_message -> addrmult[3], 2);
+	memmove(&data[14], &subscribe_message -> addrmult[4], 2);
+	memmove(&data[16], &subscribe_message -> addrmult[5], 2);
+	memmove(&data[18], &subscribe_message -> addrmult[6], 2);
+	memmove(&data[20], &subscribe_message -> addrmult[7], 2);
+
+    if (send(fd, data, 22, 0) == -1) {
+		perror("send data subscribe_message");
         return 1;
-    }
-    
-    if (write(fd, &(subscribe_message -> addrmult), 16) < 0) {
-        perror("write addrmult in subscribe_message");
-        return 1;
-    }
+	}
 
     return 0;
+}
+
+subscribe_t *read_subscribe_message(int fd) {
+	subscribe_t *subscribe_message = calloc(1, sizeof(subscribe_t));
+	if (!subscribe_message) {
+		perror("alloc subscribe_message");
+		return NULL;
+	}
+
+	server_message_t *server_message = calloc(1, sizeof(server_message_t));
+    if (!server_message) {
+        perror("alloc read server_message");
+		return NULL;
+    }
+
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(fd, &read_fds);
+
+    struct timeval timeout;
+    timeout.tv_sec = 5; // Timeout de 5 secondes
+    timeout.tv_usec = 0;
+
+    int ret = select(fd + 1, &read_fds, NULL, NULL, &timeout);
+    if (ret == -1) {
+        perror("select");
+        return NULL;
+    } else if (ret == 0) {
+        // Timeout atteint avant que la socket soit prête pour la lecture
+        perror("timeout");
+        return NULL;
+    }
+
+    uint16_t msg[11];
+	int nrecv = recv(fd, msg, 22, 0);
+    if (nrecv < 0) {
+        perror("recv server message");
+        return NULL;
+    }
+
+    uint16_t header = ntohs(msg[0]);
+    server_message -> codereq = header & 0x1F;
+    server_message -> id = header >> 5;
+    server_message -> numfil = ntohs(msg[1]);
+    server_message -> nb = ntohs(msg[2]);
+
+	subscribe_message -> server_message = server_message;
+
+	for (int i = 0, j = 3; i < 8; i++, j++)
+		subscribe_message -> addrmult[i] = ntohs(msg[j]);
+	return (subscribe_message);
 }
 
 void delete_subscribe_message(subscribe_t *subscribe_message) {
@@ -443,6 +513,98 @@ void delete_subscribe_message(subscribe_t *subscribe_message) {
     if (subscribe_message -> server_message)
         delete_server_message(subscribe_message -> server_message);
     free(subscribe_message);
+}
+
+notification_t *create_notification_message(int codereq, int id, int numfil, char pseudo[10], char data[20]) {
+	notification_t *notif_mess = calloc(1, sizeof(*notif_mess));
+	if (!notif_mess) {
+		perror("alloc notif_mess");
+		return NULL;
+	}
+	server_message_t *serv_mess = create_server_message(codereq, id, numfil, 0);
+	if (!serv_mess) {
+		free(notif_mess);
+		perror("alloc server_message in creation of notification_message");
+		return NULL;
+	}
+
+	notif_mess -> server_message = serv_mess; 
+	memset(notif_mess -> pseudo, 0, 10);
+	memset(notif_mess -> data, 0, 20);
+	for (int i = 0; i < 10; i++)
+		notif_mess -> pseudo[i] = pseudo[i];
+	for (int i = 0; i < 20; i++)
+		notif_mess -> data[i] = data[i];
+	
+	return notif_mess;
+}
+
+int send_notification_message(int fd, notification_t *notif_mess, struct sockaddr_in6 grsock) {
+	uint16_t header = create_header(notif_mess -> server_message -> codereq, notif_mess -> server_message -> id);
+    // Mise au format big-endian de NUMFIL
+	uint16_t numfil = htons(notif_mess -> server_message -> numfil);
+    // Mise au format big-endian de NB
+	uint16_t nb = htons(notif_mess -> server_message -> nb);
+
+    // Copie du message dans un tableau de char
+	char data[36];
+	memmove(&data[0], &header, 2);
+    memmove(&data[2], &numfil, 2);
+	memmove(&data[4], &nb, 2);
+	memmove(&data[6], notif_mess -> pseudo, 10);
+	memmove(&data[16], notif_mess -> data, 20);
+	
+    // Envoi du tableau
+	if (sendto(fd, data, 36, 0, (struct sockaddr*)&grsock, sizeof(grsock)) < 0) {
+		perror("sendto notif_message");
+        return 1;
+	}
+	
+	return 0;
+}
+
+notification_t *read_notification_message(int fd) {
+	notification_t *notif_mess = calloc(1, sizeof(*notif_mess));
+	if (!notif_mess) {
+		perror("alloc notif_mess in read_notif");
+		return NULL;
+	}
+	server_message_t *server_message = calloc(1, sizeof(server_message_t));
+    if (!server_message) {
+        perror("alloc read server_message");
+        free(notif_mess);
+		return NULL;
+    }
+
+	char msg[36];
+	bzero(msg, 36);
+	int nrecv = recv(fd, msg, 36, 0);
+
+	uint16_t header = ntohs(msg[0]);
+    server_message -> codereq = header & 0x1F;
+    server_message -> id = header >> 5;
+    server_message -> numfil = ntohs(msg[2]);
+    server_message -> nb = ntohs(msg[4]);
+	if (nrecv < 0) {
+		free(notif_mess);
+		delete_server_message(server_message);
+		perror("recv in read_notification_message");
+		return NULL;
+	}
+	notif_mess -> server_message = server_message;
+	for (int j = 0, i = 6; j < 10 && msg[i]; j++, i++)
+		notif_mess -> pseudo[j] = msg[i];
+	
+	for (int j = 0, i = 16; j < 20 && msg[i]; j++, i++)
+		notif_mess -> data[j] = msg[i];
+
+	return notif_mess;
+}
+
+void delete_notification_message(notification_t *message) {
+	if (message)
+		delete_server_message(message -> server_message);
+	free(message);
 }
 
 void remove_hash(char *pseudo) {

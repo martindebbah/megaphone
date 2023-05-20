@@ -28,11 +28,13 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <net/if.h>
 
 // En-têtes créées
 #include "message.h"
 #include "file.h"
 #include "server.h"
 #include "client.h"
+#include "utils.h"
 
 #endif

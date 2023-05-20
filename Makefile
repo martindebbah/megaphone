@@ -1,5 +1,5 @@
-SRCS_CLIENT = src/client.c src/message.c src/file.c
-SRCS_SERVER = src/server.c src/message.c src/file.c
+SRCS_CLIENT = src/client.c src/message.c src/file.c src/utils.c
+SRCS_SERVER = src/server.c src/message.c src/file.c src/utils.c
 
 CC = cc
 CFLAGS = -Wall -g -pedantic
@@ -9,7 +9,7 @@ EXEC = client server
 all: ${EXEC}
 
 client: ${SRCS_CLIENT}
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(CCLINK) $^ -o $@
 
 server: ${SRCS_SERVER}
 	$(CC) $(CFLAGS) $(CCLINK) $^ -o $@

@@ -37,7 +37,7 @@ typedef struct server_message_t {
 // Représente le format pour s'inscrire un fil
 typedef struct subscribe_t {
 	server_message_t *server_message;
-	uint16_t addrmult; // A passer en 128 bits
+	uint16_t addrmult[8]; // A passer en 128 bits
 } subscribe_t;
 
 // Représente le format d'un billet à renvoyer (server_message_t.nb fois ce message)
@@ -134,15 +134,21 @@ int send_post(int fd, post_t *post);
 // Libère la mémoire allouée pour un billet
 void delete_post(post_t *post);
 
-subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int addrmult);
+subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, int	addrmult[8]);
 // codereq peut être inutile puisque toujours égal à 4
 
 int send_subscribe_message(int fd, subscribe_t *subscribe_message);
+
+subscribe_t	*read_subscribe_message(int fd);
 
 void delete_subscribe_message(subscribe_t *subscribe_message);
 
 notification_t *create_notification_message(int codereq, int id, int numfil, char *pseudo, char *data);
 // codereq peut être inutile puisque toujours égal à 4
+
+int send_notification_message(int fd, notification_t *notif_mess, struct sockaddr_in6 grsock);
+
+notification_t *read_notification_message(int fd);
 
 void delete_notification_message(notification_t *notification_message);
 
