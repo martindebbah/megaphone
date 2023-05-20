@@ -674,6 +674,8 @@ void delete_msg_thread(msg_thread_t *msg_thread){
 	if (!msg_thread)
 		return;
 	delete_stack_post(msg_thread->posts);
+	if (msg_thread -> multicast_ip)
+		free(msg_thread -> multicast_ip);
 	free(msg_thread);
 }
 
@@ -773,11 +775,14 @@ int receive_post(int sock, char *client_data){
 			goto error;
 		}
 	}
-	// fin mutex
-	pthread_mutex_unlock(&recv_post_mutex);
 
 	// réponse du serveur à envoyer au client
 	int numfil = client_message -> numfil == 0 ? msg_threads_reg -> nb_fils : client_message -> numfil;
+
+	send_notification(1, numfil, client_message -> id, user);
+
+	// fin mutex
+	pthread_mutex_unlock(&recv_post_mutex);
 
 	server_msg = create_server_message(2, client_message -> id, numfil, 0);
 	if(!server_msg) {
@@ -792,8 +797,6 @@ int receive_post(int sock, char *client_data){
 
 	printf("[%d] Ajout d'un post de l'utilisateur %d au fil %d\n",
 			server_msg -> codereq, server_msg -> id, server_msg -> numfil);
-
-	send_notification(1, numfil, server_msg -> id, user);
 
 	delete_client_message(client_message);
 	delete_server_message(server_msg);
@@ -1154,17 +1157,18 @@ int	send_notification(int type, int fil, int id, char *pseudo){
 		close(socket_udp);
 		return 1;
 	}
-	char buf[20];
+	char buf[20] = {0};
 	bzero(buf, 20);
-	if (type == 0) 
-		sprintf(buf, "nouvel abonné");
-	else if (type == 1)
-		sprintf(buf, "nouveau post");
-	else 
-		sprintf(buf, "nouveau fichier");
-	char good_pseudo[10] = {0};
-	snprintf(good_pseudo, 10, "%s", pseudo);
-	notification_t *notif = create_notification_message(4, 0, numfil, good_pseudo, buf);
+	if (type == 0) // Nouvel abonné
+		sprintf(buf, "*s'est abonné*");
+	else { // Nouveau post
+		memmove(buf, msg_threads_reg -> msg_threads[numfil -1] -> posts -> post -> data, 20);
+		if (msg_threads_reg -> msg_threads[numfil -1] -> posts -> post -> datalen > 20)
+			memmove(&buf[17], "...", 3);
+	}
+	// char good_pseudo[10] = {0};
+	// snprintf(good_pseudo, 10, "%s", pseudo);
+	notification_t *notif = create_notification_message(4, 0, numfil, pseudo, buf);
 	if (!notif) {
 		perror("error in creation of notification message");
 		close(socket_udp);
@@ -1173,6 +1177,7 @@ int	send_notification(int type, int fil, int id, char *pseudo){
 	int ret_sendto = send_notification_message(socket_udp, notif, grsock);
 	if (ret_sendto < 0) {
 		perror("sendto in notification");
+		delete_notification_message(notif);
 		close(socket_udp);
 		return 1;
 	}

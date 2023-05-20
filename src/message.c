@@ -516,7 +516,7 @@ void delete_subscribe_message(subscribe_t *subscribe_message) {
 }
 
 notification_t *create_notification_message(int codereq, int id, int numfil, char pseudo[10], char data[20]) {
-	notification_t *notif_mess = calloc(1, sizeof(notif_mess));
+	notification_t *notif_mess = calloc(1, sizeof(*notif_mess));
 	if (!notif_mess) {
 		perror("alloc notif_mess");
 		return NULL;

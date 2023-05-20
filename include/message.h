@@ -37,7 +37,7 @@ typedef struct server_message_t {
 // Représente le format pour s'inscrire un fil
 typedef struct subscribe_t {
 	server_message_t *server_message;
-	uint16_t addrmult[8]; // A passer en 128 bits
+	uint16_t addrmult[8];
 } subscribe_t;
 
 // Représente le format d'un billet à renvoyer (server_message_t.nb fois ce message)

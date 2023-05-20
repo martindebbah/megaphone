@@ -889,7 +889,6 @@ int abonnement_billets(int id) {
     fd_set readfds;
 	notification_t *buffer = NULL;
 	char notification[1024] = {0};
-	char buf[1024] = {0};
 	int pos = 0;
 
 	while (quit == 1) {
@@ -921,7 +920,12 @@ int abonnement_billets(int id) {
 			}
 			else {
 				remove_hash(buffer -> pseudo);
-				sprintf(buf, "Il y a un %s sur le fil %d par %s\n", buffer -> data, buffer -> numfil, buffer -> pseudo);
+                char buf[1024] = {0};
+                char pseudo[11] = {0};
+                memmove(pseudo, buffer -> pseudo, 10);
+                char data[21] = {0};
+                memmove(data, buffer -> data, 20);
+				sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
 				int	bytesRead = strlen(buf);
 				if (pos + bytesRead < 1023) {
 					memmove(notification + pos, buf, bytesRead);

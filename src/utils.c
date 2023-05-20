@@ -201,8 +201,8 @@ char* getAvailableMulticastIPv6(void) {
     do {
         for (int i = 0; i < 16; i++) {
             unsigned int randomPart = rand() % 65536; // 2^16
-			// randomAddr.__in6_u.__u6_addr16[i] = htons(randomPart);
-			randomAddr.__u6_addr.__u6_addr16[i] = htons(randomPart);
+			randomAddr.__in6_u.__u6_addr16[i] = htons(randomPart);
+			// randomAddr.__u6_addr.__u6_addr16[i] = htons(randomPart);
         }
     } while (memcmp(&randomAddr, &minAddr, sizeof(struct in6_addr)) < 0 ||
              memcmp(&randomAddr, &maxAddr, sizeof(struct in6_addr)) > 0);
