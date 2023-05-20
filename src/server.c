@@ -10,6 +10,7 @@ static msg_threads_register_t *msg_threads_reg = NULL;
 static pthread_mutex_t users_reg_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Mutex du registre des fils
 // static pthread_mutex_t *msg_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t recv_post_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Socket du serveur
 static int server_sock = -1;
@@ -723,6 +724,7 @@ int receive_post(int sock, char *client_data){
 		goto error;
 	}
 
+	// si l'user ou le fil n'existe pas
 	if (is_client_valid(client_message) != 0)
 		goto error;
 
@@ -742,14 +744,18 @@ int receive_post(int sock, char *client_data){
 	post -> data = calloc(post -> datalen, 1);
 	memmove(post -> data, client_message -> data, post -> datalen);
 
+	// mutex
+	pthread_mutex_lock(&recv_post_mutex);
 	if(client_message -> numfil == 0){
 		msg_thread_t *msg_thread = create_msg_thread(user);
 		memmove(post->origin, msg_thread->pseudo_init, 10);
 		post->origin[10] = 0;
 		if(add_post(msg_thread, post) != 0){
+			pthread_mutex_unlock(&recv_post_mutex);
 			goto error;
 		}
 		if(add_msg_thread(msg_threads_reg, msg_thread) != 0){
+			pthread_mutex_unlock(&recv_post_mutex);
 			goto error;
 		}
 		post->numfil = msg_threads_reg->nb_fils;
@@ -758,9 +764,12 @@ int receive_post(int sock, char *client_data){
 		memmove(post->origin, msg_threads_reg->msg_threads[client_message -> numfil-1]->pseudo_init, 10);
 		post->origin[10] = 0;
 		if(add_post(msg_threads_reg->msg_threads[client_message -> numfil-1], post) != 0){
+			pthread_mutex_unlock(&recv_post_mutex);
 			goto error;
 		}
 	}
+	// fin mutex
+	pthread_mutex_unlock(&recv_post_mutex);
 
 	// réponse du serveur à envoyer au client
 	int numfil = client_message -> numfil == 0 ? msg_threads_reg -> nb_fils : client_message -> numfil;
@@ -804,11 +813,13 @@ int send_posts(int sock, char *client_data){
 		goto error;
 	}
 
+	// si l'user ou le fil n'existe pas
 	if (is_client_valid(client_message) != 0)
 		goto error;
 
 	int n = client_message -> nb;
 	int f = client_message -> numfil;
+	pthread_mutex_lock(&recv_post_mutex);
 	if(client_message -> numfil == 0){
 		f = msg_threads_reg->nb_fils;
 		if(n == 0){
@@ -830,6 +841,7 @@ int send_posts(int sock, char *client_data){
 			n = msg_threads_reg->msg_threads[client_message -> numfil-1]->nb_msg;
 		}
 	}
+	pthread_mutex_unlock(&recv_post_mutex);
 
 	server_msg = create_server_message(3, client_message -> id, f, n);
 	if(!server_msg){
@@ -839,6 +851,8 @@ int send_posts(int sock, char *client_data){
 	if(send_server_message(sock, server_msg) == -1){
 		goto error;
 	}
+	// mutex
+	pthread_mutex_lock(&recv_post_mutex);
 	if(msg_threads_reg->nb_fils > 0){
 		if(client_message -> numfil == 0){
 			for(int i = 0; i < msg_threads_reg->nb_fils; i++){
@@ -851,6 +865,7 @@ int send_posts(int sock, char *client_data){
 				}
 				while(tmp != NULL && n > 0){
 					if(send_post(sock, tmp->post) == -1){
+						pthread_mutex_unlock(&recv_post_mutex);
 						goto error;
 					}
 					tmp = tmp->next;
@@ -862,6 +877,7 @@ int send_posts(int sock, char *client_data){
 			stack_post_t *tmp = msg_threads_reg->msg_threads[client_message -> numfil-1]->posts;
 			while(tmp != NULL && n > 0){
 				if(send_post(sock, tmp->post) == -1){
+					pthread_mutex_unlock(&recv_post_mutex);
 					goto error;
 				}
 				tmp = tmp->next;
@@ -869,6 +885,8 @@ int send_posts(int sock, char *client_data){
 			}
 		}
 	}
+	// fin mutex
+	pthread_mutex_unlock(&recv_post_mutex);
 
 	printf("[%d] Envoi de %d messages à l'utilisateur %d\n",
 			server_msg -> codereq, server_msg -> nb, server_msg -> id);
