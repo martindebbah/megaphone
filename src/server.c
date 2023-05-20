@@ -80,6 +80,15 @@ int main(void) {
 		goto error;
 	}
 
+	// Hostname
+	char hostname[256] = {0};
+	if (gethostname(hostname, sizeof(hostname)) != 0) {
+        perror("gethostname");
+        goto error;
+    }
+
+    printf("Hostname: %s\n", hostname);
+
 	printf("Serveur en attente de connexion\n");
 
 	while (1) {
