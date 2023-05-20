@@ -6,7 +6,7 @@
 static int id = -1;
 char *hostname;
 char hostaddr[INET6_ADDRSTRLEN] = {0};
-static pthread_t readInputThreadId;
+static subscribe_thread_t *readInputThreadId;
 static int sock_udp = 0;
 static int quit = 1;
 
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
 }
 
 void handler(int sig) {
-	pthread_join(readInputThreadId, NULL);
+	clean_threads();
 	if (sock_udp != 0)
 		close(sock_udp);
 	quit = 0;
@@ -180,8 +180,7 @@ void *action(void *arg) {
 
 				// `echo $?` pour valeur de retour
 				quit = 0;
-
-				return NULL;
+				break;
             default:
                 printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
                 printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
@@ -196,8 +195,10 @@ void *action(void *arg) {
 			return NULL;
 		}
         memset(buf, 0, MAX_MESSAGE_SIZE);
+		if (!quit)
+			break;
     }
-
+	clean_threads();
 	return NULL;
 }
 
@@ -851,7 +852,7 @@ int abonnement_billets(int id) {
     }
 	free(ip);
 
-	unsigned int ifindex = if_nametoindex("eth0");
+	unsigned int ifindex = if_nametoindex("utun0");
     if (!ifindex) {
         perror("if_nametoindex");
     }
@@ -879,12 +880,23 @@ int abonnement_billets(int id) {
 
 	close(sock);
 
-    pthread_create(&readInputThreadId, NULL, action, &socket_udp);
-	if (quit == 0) {
-		close(socket_udp);
-		pthread_join(readInputThreadId, NULL);
-		return 0;
+	if (!readInputThreadId) {
+		readInputThreadId = calloc(1, sizeof(subscribe_thread_t *));
+		if (!readInputThreadId)
+			return 1;
 	}
+	subscribe_thread_t *move = readInputThreadId;
+	while (move != NULL) {
+		move = move ->next;
+	}
+	pthread_t	actual = NULL;
+	move = calloc(1, sizeof(subscribe_thread_t *));
+	if (!move)
+		return 1;
+	move -> thread = actual;
+	move -> next = NULL;
+	pthread_create(&actual, NULL, action , &socket_udp);
+
 	
     fd_set readfds;
 	notification_t *buffer = NULL;
@@ -906,7 +918,7 @@ int abonnement_billets(int id) {
         int readyDescriptors = select(socket_udp + 1, &readfds, NULL, NULL, &timeout);
         if (readyDescriptors == -1) {
             perror("select");
-			pthread_join(readInputThreadId, NULL);
+			pthread_join(actual, NULL);
             return 1;
         }
 		else if (readyDescriptors > 0 && FD_ISSET(socket_udp, &readfds)) {
@@ -915,7 +927,8 @@ int abonnement_billets(int id) {
 			
 			if (!buffer) {
 				perror("read in the select");
-				pthread_join(readInputThreadId, NULL);
+				pthread_join(actual, NULL); 
+				clean_threads();
 				return 1;
 			}
 			else {
@@ -950,9 +963,20 @@ int abonnement_billets(int id) {
 			}
         }
     }
-	pthread_join(readInputThreadId, NULL);
+	pthread_join(actual, NULL);
 
 	close(socket_udp);
 	return 0;
 }
 
+
+void clean_threads(void) {
+	subscribe_thread_t *move = readInputThreadId;
+	subscribe_thread_t *tmp = move;
+	while (!move) {
+		move = move -> next;
+		pthread_join(tmp -> thread, NULL);
+		free(tmp);
+		tmp = move;
+	}
+}
