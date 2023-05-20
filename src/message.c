@@ -524,6 +524,7 @@ notification_t *create_notification_message(int codereq, int id, int numfil, cha
 
     notif_mess -> codereq = codereq;
     notif_mess -> id = id;
+    notif_mess -> numfil = numfil;
     memmove(notif_mess -> pseudo, pseudo, 10);
     memmove(notif_mess -> data, data, 20);
 	

@@ -1157,17 +1157,18 @@ int	send_notification(int type, int fil, int id, char *pseudo){
 		close(socket_udp);
 		return 1;
 	}
+
 	char buf[20] = {0};
-	bzero(buf, 20);
-	if (type == 0) // Nouvel abonné
+	if (type == 0) { // Nouvel abonné
 		sprintf(buf, "*s'est abonné*");
-	else { // Nouveau post
-		memmove(buf, msg_threads_reg -> msg_threads[numfil -1] -> posts -> post -> data, 20);
-		if (msg_threads_reg -> msg_threads[numfil -1] -> posts -> post -> datalen > 20)
+	}else { // Nouveau post
+		// datalen
+		int len = msg_threads_reg -> msg_threads[numfil - 1] -> posts -> post -> datalen;
+		memmove(buf, msg_threads_reg -> msg_threads[numfil - 1] -> posts -> post -> data, (len < 20 ? len : 20));
+		if (len > 20) // Si plus de 20 caractères, on tronque la fin
 			memmove(&buf[17], "...", 3);
 	}
-	// char good_pseudo[10] = {0};
-	// snprintf(good_pseudo, 10, "%s", pseudo);
+	
 	notification_t *notif = create_notification_message(4, 0, numfil, pseudo, buf);
 	if (!notif) {
 		perror("error in creation of notification message");
