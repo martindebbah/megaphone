@@ -28,7 +28,7 @@ int telecharger_fichier(void);
 // Lit l'entrée standard, retourne l'entier positif correspondant, -1 si pas positif ou pas un entier
 int read_int(void);
 
-void *action(void *arg);
+// void *action(void *arg);
 
 int abonnement_billets(int id);
 

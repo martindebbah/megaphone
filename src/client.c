@@ -6,9 +6,8 @@
 static int id = -1;
 char *hostname;
 char hostaddr[INET6_ADDRSTRLEN] = {0};
-static subscribe_thread_t *readInputThreadId;
-static int sock_udp = 0;
-static int quit = 1;
+static subscribe_thread_t *readInputThreadId = NULL;
+static int action = 1;
 
 int main(int argc, char **argv) {
     // hostname
@@ -73,75 +72,11 @@ int main(int argc, char **argv) {
         exit(0);
     }
 
-    // memset(buf, 0, MAX_MESSAGE_SIZE);
-    // printf("Votre numéro d'identification est: %d\n", id);
-    // printf("Veuillez noter ce numéro pour pouvoir vous reconnecter plus tard\n\n");
+    memset(buf, 0, MAX_MESSAGE_SIZE);
+    printf("Votre numéro d'identification est: %d\n", id);
+    printf("Veuillez noter ce numéro pour pouvoir vous reconnecter plus tard\n\n");
 
-    // int action = 1;
-    // while(action){
-    //     printf("Que voulez-vous faire ?\n");
-    //     printf("1. Poster un billet (p)\n");
-    //     printf("2. Lister les n derniers billets (l)\n");
-    //     printf("4. Ajouter un fichier (a)\n");
-    //     printf("5. Télécharger un fichier (t)\n");
-    //     printf("3. Quitter (q)\n");
-
-    //     int nread = read(0, buf, MAX_MESSAGE_SIZE);
-    //     if (nread == -1) {
-    //         perror("Erreur read action");
-    //         return 1;
-    //     }
-    //     printf("\n");
-
-    //     int err = 0;
-    //     switch (buf[0]) {
-    //         case 'p':
-    //             err = poster_billet(id);
-    //             break;
-    //         case 'l':
-    //             err = demander_billets(id);
-    //             break;
-    //         case 'a':
-    //             err = ajouter_fichier();
-    //             break;
-    //         case 't':
-    //             err = telecharger_fichier();
-    //             break;
-    //         case 'q':
-    //             action = 0;
-    //             break;
-    //         default:
-    //             printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
-    //             printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
-    //             printf("ou `q` pour quitter l'application.\n");
-    //             break;
-    //     }
-
-    //     if (err) {
-    //         printf("Une erreur est survenue\n\n");
-    //     }
-    //     memset(buf, 0, MAX_MESSAGE_SIZE);
-    // }
-
-    // printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
-    // printf("Déconnexion réussie !\n\n");
-
-    // // `echo $?` pour valeur de retour
-    // exit(0);
-	action(NULL);
-}
-
-void handler(int sig) {
-	clean_threads();
-	if (sock_udp != 0)
-		close(sock_udp);
-	quit = 0;
-}
-
-void *action(void *arg) {
-	char buf[MAX_MESSAGE_SIZE] = {0};
-	int action = 1;
-    while(action && quit){
+    while(action){
         printf("Que voulez-vous faire ?\n");
         printf("1. Poster un billet (p)\n");
         printf("2. Lister les n derniers billets (l)\n");
@@ -153,7 +88,7 @@ void *action(void *arg) {
         int nread = read(0, buf, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read action");
-            return NULL;
+            return 1;
         }
         printf("\n");
 
@@ -165,22 +100,18 @@ void *action(void *arg) {
             case 'l':
                 err = demander_billets(id);
                 break;
-			case 's':
-				err = abonnement_billets(id);
-				break; 
             case 'a':
                 err = ajouter_fichier();
                 break;
+            case 's':
+				err = abonnement_billets(id);
+				break; 
             case 't':
                 err = telecharger_fichier();
                 break;
             case 'q':
-				printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
-				printf("Déconnexion réussie !\n\n");
-
-				// `echo $?` pour valeur de retour
-				quit = 0;
-				break;
+                action = 0;
+                break;
             default:
                 printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
                 printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
@@ -191,16 +122,86 @@ void *action(void *arg) {
         if (err) {
             printf("Une erreur est survenue\n\n");
         }
-		else if (err == 113) {
-			return NULL;
-		}
         memset(buf, 0, MAX_MESSAGE_SIZE);
-		if (!quit)
-			break;
     }
-	clean_threads();
-	return NULL;
+
+    printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
+    printf("Déconnexion réussie !\n\n");
+
+    clean_threads();
+
+    // `echo $?` pour valeur de retour
+    exit(0);
 }
+
+void handler(int sig) {
+	clean_threads();
+	action = 0;
+}
+
+// void *action(void *arg) {
+// 	char buf[MAX_MESSAGE_SIZE] = {0};
+// 	int action = 1;
+//     while(action && quit){
+//         printf("Que voulez-vous faire ?\n");
+//         printf("1. Poster un billet (p)\n");
+//         printf("2. Lister les n derniers billets (l)\n");
+// 		printf("3. Abonnement a un fil (s)\n");
+//         printf("4. Ajouter un fichier (a)\n");
+//         printf("5. Télécharger un fichier (t)\n");
+//         printf("6. Quitter (q)\n");
+
+//         int nread = read(0, buf, MAX_MESSAGE_SIZE);
+//         if (nread == -1) {
+//             perror("Erreur read action");
+//             return NULL;
+//         }
+//         printf("\n");
+
+//         int err = 0;
+//         switch (buf[0]) {
+//             case 'p':
+//                 err = poster_billet(id);
+//                 break;
+//             case 'l':
+//                 err = demander_billets(id);
+//                 break;
+// 			case 's':
+		// 		err = abonnement_billets(id);
+		// 		break; 
+        //     case 'a':
+        //         err = ajouter_fichier();
+        //         break;
+        //     case 't':
+        //         err = telecharger_fichier();
+        //         break;
+        //     case 'q':
+		// 		printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
+		// 		printf("Déconnexion réussie !\n\n");
+
+		// 		// `echo $?` pour valeur de retour
+		// 		quit = 0;
+		// 		break;
+        //     default:
+        //         printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
+        //         printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
+        //         printf("ou `q` pour quitter l'application.\n");
+        //         break;
+        // }
+
+//         if (err) {
+//             printf("Une erreur est survenue\n\n");
+//         }
+// 		else if (err == 113) {
+// 			return NULL;
+// 		}
+//         memset(buf, 0, MAX_MESSAGE_SIZE);
+// 		if (!quit)
+// 			break;
+//     }
+// 	clean_threads();
+// 	return NULL;
+// }
 
 int connect_to_server(void) {
     int sock = -1;
@@ -761,6 +762,73 @@ int read_int(void) {
     return n;
 }
 
+void *get_notification(void *arg) {
+    int socket_udp = *(int *)arg;
+    fd_set readfds;
+	notification_t *buffer = NULL;
+	char notification[1024] = {0};
+	int pos = 0;
+
+	while (action) {
+        FD_ZERO(&readfds);
+        FD_SET(socket_udp, &readfds);
+
+        // Définir le timeout pour select
+		int max = 0;
+		char tmp[1024] = {0};
+        struct timeval timeout;
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+
+        // Utiliser select pour attendre des données en lecture
+        int readyDescriptors = select(socket_udp + 1, &readfds, NULL, NULL, &timeout);
+        if (readyDescriptors == -1) {
+            break;
+        }
+		else if (readyDescriptors > 0 && FD_ISSET(socket_udp, &readfds)) {
+			// Le socket client a des données disponibles pour la lecture
+			buffer = read_notification_message(socket_udp);
+			if (!buffer) {
+				perror("read in the select");
+				return NULL;
+			}
+			else {
+				remove_hash(buffer -> pseudo);
+                char buf[1024] = {0};
+                char pseudo[11] = {0};
+                memmove(pseudo, buffer -> pseudo, 10);
+                char data[21] = {0};
+                memmove(data, buffer -> data, 20);
+				sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
+				int	bytesRead = strlen(buf);
+				if (pos + bytesRead < 1023) {
+					memmove(notification + pos, buf, bytesRead);
+					pos += bytesRead;
+					delete_notification_message(buffer);
+				}
+				else {
+					max = 1;
+					memmove(tmp, buf, bytesRead);
+					delete_notification_message(buffer);
+				}
+			}
+        } else if (readyDescriptors == 0 || max == 1){
+			if(notification[0] != '\0') {
+				printf("%s", notification);
+				bzero(notification, 1024);
+				pos = 0;
+                if (tmp[0] != '\0') {
+					memmove(notification, tmp, strlen(tmp));
+					pos += strlen(tmp);
+				}
+			}
+        }
+    }
+    close(socket_udp);
+    // Fin
+    return NULL;
+}
+
 int abonnement_billets(int id) {
 	int sock = connect_to_server();
 	if (sock < 0) {
@@ -832,7 +900,6 @@ int abonnement_billets(int id) {
 	free(split);
 
 	int socket_udp = socket(AF_INET6, SOCK_DGRAM, 0);
-	sock_udp = socket_udp;
 	if (socket_udp < 0) {
 		perror("socket");
 		return -1;
@@ -840,6 +907,7 @@ int abonnement_billets(int id) {
 	int yes = 1;
 	if (setsockopt(socket_udp, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
 		perror("setsockopt reuse");
+        close(socket_udp);
 		return -1;
 	}
 
@@ -851,8 +919,7 @@ int abonnement_billets(int id) {
         return -1;
     }
 	free(ip);
-
-	unsigned int ifindex = if_nametoindex("utun0");
+	unsigned int ifindex = if_nametoindex("eth0");
     if (!ifindex) {
         perror("if_nametoindex");
     }
@@ -868,13 +935,12 @@ int abonnement_billets(int id) {
 	struct sockaddr_in6 addr = {0};
 	addr.sin6_family = AF_INET6;
 	addr.sin6_port = htons(PORT);
-	int nbind = bind(socket_udp, (struct sockaddr *)&addr, sizeof(addr));
+	int nbind = bind(socket_udp, (struct sockaddr *) &addr, sizeof(addr));
 	if (nbind < 0) {
 		perror("bind");
 		close(socket_udp);
 		return 1;
 	}
-
 
 	printf("Abonnement avec succes sur le fil : %d\n", numfil);
 
@@ -882,93 +948,101 @@ int abonnement_billets(int id) {
 
 	if (!readInputThreadId) {
 		readInputThreadId = calloc(1, sizeof(subscribe_thread_t *));
-		if (!readInputThreadId)
-			return 1;
+		if (!readInputThreadId) {
+            close(socket_udp);
+		    return 1;
+        }
 	}
 	subscribe_thread_t *move = readInputThreadId;
 	while (move != NULL) {
 		move = move ->next;
 	}
-	pthread_t	actual = NULL;
+	pthread_t actual;
 	move = calloc(1, sizeof(subscribe_thread_t *));
-	if (!move)
+	if (!move) {
+        close(socket_udp);
 		return 1;
+    }
+    
 	move -> thread = actual;
 	move -> next = NULL;
-	pthread_create(&actual, NULL, action , &socket_udp);
+    
+	pthread_create(&actual, NULL, get_notification , &socket_udp);
+    return 0;
 
-	
-    fd_set readfds;
-	notification_t *buffer = NULL;
-	char notification[1024] = {0};
-	int pos = 0;
 
-	while (quit == 1) {
-        FD_ZERO(&readfds);
-        FD_SET(socket_udp, &readfds);
+	// Début
+    // fd_set readfds;
+	// notification_t *buffer = NULL;
+	// char notification[1024] = {0};
+	// int pos = 0;
 
-        // Définir le timeout pour select
-		int max = 0;
-		char tmp[1024] = {0};
-        struct timeval timeout;
-        timeout.tv_sec = 3;
-        timeout.tv_usec = 0;
+	// while (quit == 1) {
+    //     FD_ZERO(&readfds);
+    //     FD_SET(socket_udp, &readfds);
 
-        // Utiliser select pour attendre des données en lecture
-        int readyDescriptors = select(socket_udp + 1, &readfds, NULL, NULL, &timeout);
-        if (readyDescriptors == -1) {
-            perror("select");
-			pthread_join(actual, NULL);
-            return 1;
-        }
-		else if (readyDescriptors > 0 && FD_ISSET(socket_udp, &readfds)) {
-			// Le socket client a des données disponibles pour la lecture
-			buffer = read_notification_message(socket_udp);
+    //     // Définir le timeout pour select
+	// 	int max = 0;
+	// 	char tmp[1024] = {0};
+    //     struct timeval timeout;
+    //     timeout.tv_sec = 3;
+    //     timeout.tv_usec = 0;
+
+    //     // Utiliser select pour attendre des données en lecture
+    //     int readyDescriptors = select(socket_udp + 1, &readfds, NULL, NULL, &timeout);
+    //     if (readyDescriptors == -1) {
+    //         perror("select");
+	// 		pthread_join(actual, NULL);
+    //         return 1;
+    //     }
+	// 	else if (readyDescriptors > 0 && FD_ISSET(socket_udp, &readfds)) {
+	// 		// Le socket client a des données disponibles pour la lecture
+	// 		buffer = read_notification_message(socket_udp);
 			
-			if (!buffer) {
-				perror("read in the select");
-				pthread_join(actual, NULL); 
-				clean_threads();
-				return 1;
-			}
-			else {
-				remove_hash(buffer -> pseudo);
-                char buf[1024] = {0};
-                char pseudo[11] = {0};
-                memmove(pseudo, buffer -> pseudo, 10);
-                char data[21] = {0};
-                memmove(data, buffer -> data, 20);
-				sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
-				int	bytesRead = strlen(buf);
-				if (pos + bytesRead < 1023) {
-					memmove(notification + pos, buf, bytesRead);
-					pos += bytesRead;
-					delete_notification_message(buffer);
-				}
-				else {
-					max = 1;
-					memmove(tmp, buf, bytesRead);
-					delete_notification_message(buffer);
-				}
-			}
-        } else if (readyDescriptors == 0 || max == 1){
-			if(notification[0] != '\0') {
-				printf("%s\n",notification);
-				bzero(notification, 1024);
-				pos = 0;
-                if (tmp[0] != '\0') {
-					memmove(notification, tmp, strlen(tmp));
-					pos += strlen(tmp);
-				}
-			}
-        }
-    }
-	pthread_join(actual, NULL);
+	// 		if (!buffer) {
+	// 			perror("read in the select");
+	// 			pthread_join(actual, NULL); 
+	// 			clean_threads();
+	// 			return 1;
+	// 		}
+	// 		else {
+	// 			remove_hash(buffer -> pseudo);
+    //             char buf[1024] = {0};
+    //             char pseudo[11] = {0};
+    //             memmove(pseudo, buffer -> pseudo, 10);
+    //             char data[21] = {0};
+    //             memmove(data, buffer -> data, 20);
+	// 			sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
+	// 			int	bytesRead = strlen(buf);
+	// 			if (pos + bytesRead < 1023) {
+	// 				memmove(notification + pos, buf, bytesRead);
+	// 				pos += bytesRead;
+	// 				delete_notification_message(buffer);
+	// 			}
+	// 			else {
+	// 				max = 1;
+	// 				memmove(tmp, buf, bytesRead);
+	// 				delete_notification_message(buffer);
+	// 			}
+	// 		}
+    //     } else if (readyDescriptors == 0 || max == 1){
+	// 		if(notification[0] != '\0') {
+	// 			printf("%s\n",notification);
+	// 			bzero(notification, 1024);
+	// 			pos = 0;
+    //             if (tmp[0] != '\0') {
+	// 				memmove(notification, tmp, strlen(tmp));
+	// 				pos += strlen(tmp);
+	// 			}
+	// 		}
+    //     }
+    // }
+    // // Fin
+	// pthread_join(actual, NULL);
 
 	close(socket_udp);
 	return 0;
 }
-
 
 void clean_threads(void) {
 	subscribe_thread_t *move = readInputThreadId;
@@ -979,4 +1053,6 @@ void clean_threads(void) {
 		free(tmp);
 		tmp = move;
 	}
+    if (readInputThreadId)
+        free(readInputThreadId);
 }
