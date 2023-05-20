@@ -411,7 +411,7 @@ subscribe_t *create_subscribe_message(int codereq, int id, int numfil, int nb, i
         perror("server_message in subscribe_message");
         goto error;
     }
-	printf("NUM FIL %d\n", subscribe_message -> server_message -> numfil);
+    
     // Mise au format big-endian de ADDRMULT
 	for (int i = 0; i < 8; i++)
     	subscribe_message -> addrmult[i] = htons(addrmult[i]);
@@ -516,46 +516,34 @@ void delete_subscribe_message(subscribe_t *subscribe_message) {
 }
 
 notification_t *create_notification_message(int codereq, int id, int numfil, char pseudo[10], char data[20]) {
-	notification_t *notif_mess = calloc(1, sizeof(*notif_mess));
+	notification_t *notif_mess = calloc(1, sizeof(notif_mess));
 	if (!notif_mess) {
 		perror("alloc notif_mess");
 		return NULL;
 	}
-	server_message_t *serv_mess = create_server_message(codereq, id, numfil, 0);
-	if (!serv_mess) {
-		free(notif_mess);
-		perror("alloc server_message in creation of notification_message");
-		return NULL;
-	}
 
-	notif_mess -> server_message = serv_mess; 
-	memset(notif_mess -> pseudo, 0, 10);
-	memset(notif_mess -> data, 0, 20);
-	for (int i = 0; i < 10; i++)
-		notif_mess -> pseudo[i] = pseudo[i];
-	for (int i = 0; i < 20; i++)
-		notif_mess -> data[i] = data[i];
+    notif_mess -> codereq = codereq;
+    notif_mess -> id = id;
+    memmove(notif_mess -> pseudo, pseudo, 10);
+    memmove(notif_mess -> data, data, 20);
 	
 	return notif_mess;
 }
 
 int send_notification_message(int fd, notification_t *notif_mess, struct sockaddr_in6 grsock) {
-	uint16_t header = create_header(notif_mess -> server_message -> codereq, notif_mess -> server_message -> id);
+	uint16_t header = create_header(notif_mess -> codereq, notif_mess -> id);
     // Mise au format big-endian de NUMFIL
-	uint16_t numfil = htons(notif_mess -> server_message -> numfil);
-    // Mise au format big-endian de NB
-	uint16_t nb = htons(notif_mess -> server_message -> nb);
+	uint16_t numfil = htons(notif_mess -> numfil);
 
     // Copie du message dans un tableau de char
-	char data[36];
+	char data[34];
 	memmove(&data[0], &header, 2);
     memmove(&data[2], &numfil, 2);
-	memmove(&data[4], &nb, 2);
-	memmove(&data[6], notif_mess -> pseudo, 10);
-	memmove(&data[16], notif_mess -> data, 20);
+	memmove(&data[4], notif_mess -> pseudo, 10);
+	memmove(&data[14], notif_mess -> data, 20);
 	
     // Envoi du tableau
-	if (sendto(fd, data, 36, 0, (struct sockaddr*)&grsock, sizeof(grsock)) < 0) {
+	if (sendto(fd, data, 34, 0, (struct sockaddr*)&grsock, sizeof(grsock)) < 0) {
 		perror("sendto notif_message");
         return 1;
 	}
@@ -569,42 +557,31 @@ notification_t *read_notification_message(int fd) {
 		perror("alloc notif_mess in read_notif");
 		return NULL;
 	}
-	server_message_t *server_message = calloc(1, sizeof(server_message_t));
-    if (!server_message) {
-        perror("alloc read server_message");
-        free(notif_mess);
-		return NULL;
+
+	char msg[34];
+	bzero(msg, 34);
+	int nrecv = recv(fd, msg, 34, 0);
+    if (nrecv != 34) {
+        perror("recv notif");
+        delete_notification_message(notif_mess);
+        return NULL;
     }
 
-	char msg[36];
-	bzero(msg, 36);
-	int nrecv = recv(fd, msg, 36, 0);
-
-	uint16_t header = ntohs(msg[0]);
-    server_message -> codereq = header & 0x1F;
-    server_message -> id = header >> 5;
-    server_message -> numfil = ntohs(msg[2]);
-    server_message -> nb = ntohs(msg[4]);
-	if (nrecv < 0) {
-		free(notif_mess);
-		delete_server_message(server_message);
-		perror("recv in read_notification_message");
-		return NULL;
-	}
-	notif_mess -> server_message = server_message;
-	for (int j = 0, i = 6; j < 10 && msg[i]; j++, i++)
-		notif_mess -> pseudo[j] = msg[i];
-	
-	for (int j = 0, i = 16; j < 20 && msg[i]; j++, i++)
-		notif_mess -> data[j] = msg[i];
+    uint16_t header = 0;
+    memmove(&header, &msg[0], 2);
+    notif_mess -> codereq = ntohs(header) & 0x1F;
+    notif_mess -> id = ntohs(header) >> 5;
+    memmove(&(notif_mess -> numfil), &msg[2], 2);
+    notif_mess -> numfil = ntohs(notif_mess -> numfil);
+    memmove(notif_mess -> pseudo, &msg[4], 10);
+    memmove(notif_mess -> data, &msg[14], 20);
 
 	return notif_mess;
 }
 
 void delete_notification_message(notification_t *message) {
 	if (message)
-		delete_server_message(message -> server_message);
-	free(message);
+	    free(message);
 }
 
 void remove_hash(char *pseudo) {

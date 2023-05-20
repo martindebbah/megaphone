@@ -416,6 +416,10 @@ int add_file(int sock, char *data) {
 	printf("[%d] Ajout de %s par l'utilisateur %d sur le fil %d\n",
 			client_message -> codereq, filename, client_message -> id, numfil);
 
+	char *pseudo = get_user(server_message -> id);
+	send_notification(2, numfil, server_message -> id, pseudo);
+
+	free(pseudo);
 	delete_client_message(client_message);
 	delete_server_message(server_message);
 	delete_file(file);
@@ -788,6 +792,8 @@ int receive_post(int sock, char *client_data){
 
 	printf("[%d] Ajout d'un post de l'utilisateur %d au fil %d\n",
 			server_msg -> codereq, server_msg -> id, server_msg -> numfil);
+
+	send_notification(1, numfil, server_msg -> id, user);
 
 	delete_client_message(client_message);
 	delete_server_message(server_msg);

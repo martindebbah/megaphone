@@ -921,7 +921,7 @@ int abonnement_billets(int id) {
 			}
 			else {
 				remove_hash(buffer -> pseudo);
-				sprintf(buf, "Il y a un %s sur le fil %d par %s\n", buffer -> data, buffer -> server_message -> numfil, buffer -> pseudo);
+				sprintf(buf, "Il y a un %s sur le fil %d par %s\n", buffer -> data, buffer -> numfil, buffer -> pseudo);
 				int	bytesRead = strlen(buf);
 				if (pos + bytesRead < 1023) {
 					memmove(notification + pos, buf, bytesRead);

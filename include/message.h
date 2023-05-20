@@ -51,7 +51,9 @@ typedef struct post_t {
 
 // Représente le format d'une notification
 typedef struct notification_t {
-	server_message_t *server_message;
+    int codereq;
+    int id;
+    int numfil;
 	char pseudo[10];
 	char data[20];
 } notification_t;
