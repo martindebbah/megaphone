@@ -778,7 +778,7 @@ int receive_post(int sock, char *client_data){
 
 	// réponse du serveur à envoyer au client
 	int numfil = client_message -> numfil == 0 ? msg_threads_reg -> nb_fils : client_message -> numfil;
-
+	printf("NUM FIL %d\n", numfil);
 	send_notification(1, numfil, client_message -> id, user);
 
 	// fin mutex

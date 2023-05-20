@@ -1,6 +1,11 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+typedef struct subscribe_thread_t {
+	pthread_t thread;
+	struct subscribe_thread_t *next;
+} subscribe_thread_t;
+
 // Crée une connexion avec le serveur et renvoie la socket associée (-1 en cas d'erreur)
 int connect_to_server(void);
 
@@ -26,5 +31,7 @@ int read_int(void);
 void *action(void *arg);
 
 int abonnement_billets(int id);
+
+void clean_threads(void);
 
 #endif
