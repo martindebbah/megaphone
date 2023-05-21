@@ -8,6 +8,7 @@ char *hostname;
 char hostaddr[INET6_ADDRSTRLEN] = {0};
 static subscribe_thread_t *readInputThreadId = NULL;
 static int action = 1;
+static pthread_mutex_t readyDescriptorsMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char **argv) {
     // hostname
@@ -16,6 +17,10 @@ int main(int argc, char **argv) {
         return 1;
     }
     hostname = argv[1];
+
+	struct sigaction signaux = {0};
+	signaux.sa_handler = handler;
+	sigaction(SIGINT, &signaux, NULL);
 
     char buf[MAX_MESSAGE_SIZE] = {0};
     int notLogged = 1;
@@ -69,7 +74,8 @@ int main(int argc, char **argv) {
     // L'utilisateur quitte l'application
     if (id == -1) {
         printf("Au revoir\n\n");
-        exit(0);
+        // exit(0);
+		return (0);
     }
 
     memset(buf, 0, MAX_MESSAGE_SIZE);
@@ -88,6 +94,8 @@ int main(int argc, char **argv) {
         int nread = read(0, buf, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("Erreur read action");
+            action = 0;
+			clean_threads();
             return 1;
         }
         printf("\n");
@@ -131,77 +139,14 @@ int main(int argc, char **argv) {
     clean_threads();
 
     // `echo $?` pour valeur de retour
-    exit(0);
+    // exit(0);
+	return 0;
 }
 
 void handler(int sig) {
-	clean_threads();
-	action = 0;
+	// clean_threads();
+    close(0);
 }
-
-// void *action(void *arg) {
-// 	char buf[MAX_MESSAGE_SIZE] = {0};
-// 	int action = 1;
-//     while(action && quit){
-//         printf("Que voulez-vous faire ?\n");
-//         printf("1. Poster un billet (p)\n");
-//         printf("2. Lister les n derniers billets (l)\n");
-// 		printf("3. Abonnement a un fil (s)\n");
-//         printf("4. Ajouter un fichier (a)\n");
-//         printf("5. Télécharger un fichier (t)\n");
-//         printf("6. Quitter (q)\n");
-
-//         int nread = read(0, buf, MAX_MESSAGE_SIZE);
-//         if (nread == -1) {
-//             perror("Erreur read action");
-//             return NULL;
-//         }
-//         printf("\n");
-
-//         int err = 0;
-//         switch (buf[0]) {
-//             case 'p':
-//                 err = poster_billet(id);
-//                 break;
-//             case 'l':
-//                 err = demander_billets(id);
-//                 break;
-// 			case 's':
-		// 		err = abonnement_billets(id);
-		// 		break; 
-        //     case 'a':
-        //         err = ajouter_fichier();
-        //         break;
-        //     case 't':
-        //         err = telecharger_fichier();
-        //         break;
-        //     case 'q':
-		// 		printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
-		// 		printf("Déconnexion réussie !\n\n");
-
-		// 		// `echo $?` pour valeur de retour
-		// 		quit = 0;
-		// 		break;
-        //     default:
-        //         printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
-        //         printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
-        //         printf("ou `q` pour quitter l'application.\n");
-        //         break;
-        // }
-
-//         if (err) {
-//             printf("Une erreur est survenue\n\n");
-//         }
-// 		else if (err == 113) {
-// 			return NULL;
-// 		}
-//         memset(buf, 0, MAX_MESSAGE_SIZE);
-// 		if (!quit)
-// 			break;
-//     }
-// 	clean_threads();
-// 	return NULL;
-// }
 
 int connect_to_server(void) {
     int sock = -1;
@@ -236,9 +181,7 @@ int connect_to_server(void) {
             inet_ntop(AF_INET6, &(adr6->sin6_addr), hostaddr, INET6_ADDRSTRLEN);
         }
     }
-
     freeaddrinfo(r);
-
     return sock;
 }
 
@@ -763,7 +706,8 @@ int read_int(void) {
 }
 
 void *get_notification(void *arg) {
-    int socket_udp = *(int *)arg;
+	pthread_mutex_lock(&readyDescriptorsMutex);
+	int socket_udp = *(int *)arg;
     fd_set readfds;
 	notification_t *buffer = NULL;
 	char notification[1024] = {0};
@@ -772,7 +716,6 @@ void *get_notification(void *arg) {
 	while (action) {
         FD_ZERO(&readfds);
         FD_SET(socket_udp, &readfds);
-
         // Définir le timeout pour select
 		int max = 0;
 		char tmp[1024] = {0};
@@ -790,7 +733,7 @@ void *get_notification(void *arg) {
 			buffer = read_notification_message(socket_udp);
 			if (!buffer) {
 				perror("read in the select");
-				return NULL;
+				break;
 			}
 			else {
 				remove_hash(buffer -> pseudo);
@@ -812,19 +755,20 @@ void *get_notification(void *arg) {
 					delete_notification_message(buffer);
 				}
 			}
-        } else if (readyDescriptors == 0 || max == 1){
-			if(notification[0] != '\0') {
-				printf("%s", notification);
-				bzero(notification, 1024);
-				pos = 0;
-                if (tmp[0] != '\0') {
-					memmove(notification, tmp, strlen(tmp));
-					pos += strlen(tmp);
-				}
+		}
+		else if ((readyDescriptors == 0 || max == 1) && notification[0] != 0){
+			printf("%s", notification);
+			bzero(notification, 1024);
+			pos = 0;
+			if (tmp[0] != '\0') {
+				memmove(notification, tmp, strlen(tmp));
+				pos += strlen(tmp);
 			}
         }
     }
+	free(arg);
     close(socket_udp);
+	pthread_mutex_unlock(&readyDescriptorsMutex);
     // Fin
     return NULL;
 }
@@ -919,7 +863,7 @@ int abonnement_billets(int id) {
         return -1;
     }
 	free(ip);
-	unsigned int ifindex = if_nametoindex("eth0");
+	unsigned int ifindex = if_nametoindex(NAME_INTERFACE);
     if (!ifindex) {
         perror("if_nametoindex");
     }
@@ -941,118 +885,68 @@ int abonnement_billets(int id) {
 		close(socket_udp);
 		return 1;
 	}
-
-	printf("Abonnement avec succes sur le fil : %d\n", numfil);
-
+	
 	close(sock);
 
+	int *socket_udp_ptr = calloc(1, sizeof(*socket_udp_ptr));
+	if (!socket_udp_ptr) {
+		perror ("alloc sock_udp_ptr");
+		close(socket_udp);
+		return 1;
+	}
+	*socket_udp_ptr = socket_udp;
+
 	if (!readInputThreadId) {
-		readInputThreadId = calloc(1, sizeof(subscribe_thread_t *));
+		readInputThreadId = calloc(1, sizeof(*readInputThreadId));
 		if (!readInputThreadId) {
-            close(socket_udp);
-		    return 1;
+			goto error;
+		}
+		readInputThreadId -> next = NULL;
+		readInputThreadId -> sock = socket_udp_ptr;
+		if (pthread_create(&readInputThreadId -> thread, NULL, get_notification, (void *)socket_udp_ptr) != 0) {
+			perror("abonnement_billets pthread_create");
+			free(readInputThreadId);
+			readInputThreadId = NULL;
+			goto error;
+		}
+	}
+	else {
+		subscribe_thread_t *move = readInputThreadId;
+		while (move -> next != NULL)
+			move = move ->next;
+		move -> next = calloc(1, sizeof(*move));
+		if (!move -> next) {
+			goto error;
+		}
+		move -> next -> sock = socket_udp_ptr;
+		move -> next -> next = NULL;
+		if (pthread_create(&move -> next -> thread, NULL, get_notification, (void *)socket_udp_ptr) != 0) {
+            perror("abonnement_billets pthread_create");
+            free(move -> next);
+            move -> next = NULL;
+			goto error;
         }
 	}
-	subscribe_thread_t *move = readInputThreadId;
-	while (move != NULL) {
-		move = move ->next;
-	}
-	pthread_t actual;
-	move = calloc(1, sizeof(subscribe_thread_t *));
-	if (!move) {
-        close(socket_udp);
-		return 1;
-    }
-    
-	move -> thread = actual;
-	move -> next = NULL;
-    
-	pthread_create(&actual, NULL, get_notification , &socket_udp);
+	printf("Abonnement avec succes sur le fil : %d\n", numfil);
     return 0;
 
-
-	// Début
-    // fd_set readfds;
-	// notification_t *buffer = NULL;
-	// char notification[1024] = {0};
-	// int pos = 0;
-
-	// while (quit == 1) {
-    //     FD_ZERO(&readfds);
-    //     FD_SET(socket_udp, &readfds);
-
-    //     // Définir le timeout pour select
-	// 	int max = 0;
-	// 	char tmp[1024] = {0};
-    //     struct timeval timeout;
-    //     timeout.tv_sec = 3;
-    //     timeout.tv_usec = 0;
-
-    //     // Utiliser select pour attendre des données en lecture
-    //     int readyDescriptors = select(socket_udp + 1, &readfds, NULL, NULL, &timeout);
-    //     if (readyDescriptors == -1) {
-    //         perror("select");
-	// 		pthread_join(actual, NULL);
-    //         return 1;
-    //     }
-	// 	else if (readyDescriptors > 0 && FD_ISSET(socket_udp, &readfds)) {
-	// 		// Le socket client a des données disponibles pour la lecture
-	// 		buffer = read_notification_message(socket_udp);
-			
-	// 		if (!buffer) {
-	// 			perror("read in the select");
-	// 			pthread_join(actual, NULL); 
-	// 			clean_threads();
-	// 			return 1;
-	// 		}
-	// 		else {
-	// 			remove_hash(buffer -> pseudo);
-    //             char buf[1024] = {0};
-    //             char pseudo[11] = {0};
-    //             memmove(pseudo, buffer -> pseudo, 10);
-    //             char data[21] = {0};
-    //             memmove(data, buffer -> data, 20);
-	// 			sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
-	// 			int	bytesRead = strlen(buf);
-	// 			if (pos + bytesRead < 1023) {
-	// 				memmove(notification + pos, buf, bytesRead);
-	// 				pos += bytesRead;
-	// 				delete_notification_message(buffer);
-	// 			}
-	// 			else {
-	// 				max = 1;
-	// 				memmove(tmp, buf, bytesRead);
-	// 				delete_notification_message(buffer);
-	// 			}
-	// 		}
-    //     } else if (readyDescriptors == 0 || max == 1){
-	// 		if(notification[0] != '\0') {
-	// 			printf("%s\n",notification);
-	// 			bzero(notification, 1024);
-	// 			pos = 0;
-    //             if (tmp[0] != '\0') {
-	// 				memmove(notification, tmp, strlen(tmp));
-	// 				pos += strlen(tmp);
-	// 			}
-	// 		}
-    //     }
-    // }
-    // // Fin
-	// pthread_join(actual, NULL);
-
-	close(socket_udp);
-	return 0;
+	error :
+		close(socket_udp);
+		free(socket_udp_ptr);
+		return 1;
 }
 
 void clean_threads(void) {
-	subscribe_thread_t *move = readInputThreadId;
-	subscribe_thread_t *tmp = move;
-	while (!move) {
-		move = move -> next;
-		pthread_join(tmp -> thread, NULL);
-		free(tmp);
-		tmp = move;
+    if (readInputThreadId == NULL)
+        return;
+	else {
+		subscribe_thread_t *move = readInputThreadId;
+		subscribe_thread_t *tmp = move;
+		while (move) {
+			move = move -> next;
+			pthread_join(tmp -> thread, NULL);
+			free(tmp);
+			tmp = move;
+		}
 	}
-    if (readInputThreadId)
-        free(readInputThreadId);
 }

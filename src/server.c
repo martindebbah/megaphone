@@ -1120,11 +1120,7 @@ int register_abonnement(int sock, char *data) {
 }
 
 int	send_notification(int type, int fil, int id, char *pseudo){
-	int numfil = 0;
-	if (fil == 0)
-		numfil = 1;
-	else
-		numfil = fil;
+	int numfil = fil;
 	if (msg_threads_reg && msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip == NULL)
 		return 1;
 	char *ipv6 = msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip;
@@ -1133,7 +1129,7 @@ int	send_notification(int type, int fil, int id, char *pseudo){
 		perror("socket");
 		return 1;
 	}
-	unsigned int ifindex = if_nametoindex("eth0");
+	unsigned int ifindex = if_nametoindex(NAME_INTERFACE);
 	if (!ifindex) {
 		perror("erreur nom d'interface");
 		close(socket_udp);

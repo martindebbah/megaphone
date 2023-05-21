@@ -3,6 +3,7 @@
 
 typedef struct subscribe_thread_t {
 	pthread_t thread;
+	int *sock;
 	struct subscribe_thread_t *next;
 } subscribe_thread_t;
 

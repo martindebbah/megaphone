@@ -13,6 +13,8 @@
 #define MAX_MESSAGE_SIZE    256
 #define UDP_PACKET_SIZE     512
 
+#define NAME_INTERFACE "eth0"
+
 // Librairies utilisées
 #include <stdlib.h>
 #include <stdio.h>
