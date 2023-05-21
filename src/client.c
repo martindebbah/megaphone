@@ -130,18 +130,16 @@ int main(int argc, char **argv) {
         memset(buf, 0, MAX_MESSAGE_SIZE);
     }
 
+    clean_threads();
+
     printf("Pour pouvoir vous reconnecter, n'oubliez pas de noter votre numéro d'identification: %d\n", id);
     printf("Déconnexion réussie !\n\n");
 
-    clean_threads();
-
-    // `echo $?` pour valeur de retour
-    // exit(0);
 	return 0;
 }
 
 void handler(int sig) {
-	// clean_threads();
+    // Fermeture de l'entrée standard pour sortir de la boucle principale
     close(0);
 }
 
