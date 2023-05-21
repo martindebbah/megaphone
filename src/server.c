@@ -1041,52 +1041,35 @@ int is_client_valid(client_message_t *client_message) {
 }
 
 int register_abonnement(int sock, char *data) {
-	// Socket avec protocol UDP
-	// enlever ce socket
-	int socket_udp = socket(AF_INET6, SOCK_DGRAM, 0);
-	if (!socket_udp) {
-		perror("socket");
-		return 1;
-	}
-
-	// Je crée mon groupe pour le socket du fil
-	struct sockaddr_in6 grsock;
-	memset(&grsock, 0, sizeof(grsock));
-	grsock.sin6_family = AF_INET6;
-	grsock.sin6_port = htons(PORT);
-
-	// Je fais en sorte que le socket soit reutilisable
 
 	client_message_t *mes = read_to_client_message(data);
-	if (is_client_valid(mes) != 0) {
+	if (is_client_valid(mes) != 0 || mes -> numfil == 0) {
 		delete_client_message(mes);
 		
-		close(socket_udp);
 		return 1;
 	}
-	// check le numfil si pas existant (ou 0) je me casse
-	int numfil = mes  -> numfil;
 
-	if (numfil == 0 || numfil > msg_threads_reg -> nb_fils) {
-		printf("Mauvais numero de fil\n");
-		close(socket_udp);
-		delete_client_message(mes);
-		return 1;
-	}
+	int numfil = mes -> numfil;
+
 	char *ipv6 = NULL;
 	if (msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip == NULL)
 	{
 		ipv6 = getAvailableMulticastIPv6();
+		int i = 0;
+		while (i < numfil) {
+			if (msg_threads_reg -> msg_threads[i] -> multicast_ip && strcmp(msg_threads_reg -> msg_threads[i] -> multicast_ip, ipv6) == 0) {
+				free(ipv6);
+				ipv6 = getAvailableMulticastIPv6();
+				i = 0;
+				continue;
+			}
+			else
+				i++;
+		}
 		msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip = ipv6;
 	}
 	else
 		ipv6 = msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip;
-	int ret = inet_pton(AF_INET6, ipv6, &grsock.sin6_addr);
-	if (ret != 1) {
-		perror("Erreur inet_pton IPv6");
-		close(socket_udp);
-		return 1;
-	}
 
 	char **split = ft_split(ipv6, ':');
 	int addr[8] = {0};
@@ -1115,12 +1098,10 @@ int register_abonnement(int sock, char *data) {
 	delete_subscribe_message(send_subscribe);
 	delete_client_message(mes);
 	
-	close(socket_udp);
 	return 0;
 }
 
-int	send_notification(int type, int fil, int id, char *pseudo){
-	int numfil = fil;
+int	send_notification(int type, int numfil, int id, char *pseudo) {
 	if (msg_threads_reg && msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip == NULL)
 		return 1;
 	char *ipv6 = msg_threads_reg -> msg_threads[numfil - 1] -> multicast_ip;
@@ -1143,8 +1124,8 @@ int	send_notification(int type, int fil, int id, char *pseudo){
 	struct sockaddr_in6 grsock;
 	memset(&grsock, 0, sizeof(grsock));
 	grsock.sin6_family = AF_INET6;
-	grsock.sin6_port = htons(PORT);
-		
+	grsock.sin6_port = htons(PORT + numfil);
+	
 	int ret = inet_pton(AF_INET6, ipv6, &grsock.sin6_addr);
 	if (ret != 1) {
 		perror("Erreur inet_pton IPv6");

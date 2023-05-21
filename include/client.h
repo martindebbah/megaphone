@@ -1,10 +1,15 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+typedef struct socket_list_t {
+	int *sock;
+	int numfil;
+ 	struct socket_list_t *next;
+} socket_list_t;
+
 typedef struct subscribe_thread_t {
 	pthread_t thread;
-	int *sock;
-	struct subscribe_thread_t *next;
+	struct socket_list_t *socket;
 } subscribe_thread_t;
 
 // Crée une connexion avec le serveur et renvoie la socket associée (-1 en cas d'erreur)

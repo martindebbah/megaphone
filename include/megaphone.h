@@ -4,7 +4,7 @@
 // Adresses connexion client et ports
 #define PORT_STR    "30000"
 #define PORT        30000
-#define UDP_PORT    30001
+#define UDP_PORT    29999
 
 // Nombre maximal de threads en simultané
 #define NTHREADS 10

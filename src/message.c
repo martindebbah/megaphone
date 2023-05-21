@@ -466,6 +466,7 @@ subscribe_t *read_subscribe_message(int fd) {
 	server_message_t *server_message = calloc(1, sizeof(server_message_t));
     if (!server_message) {
         perror("alloc read server_message");
+        delete_subscribe_message(subscribe_message);
 		return NULL;
     }
 
@@ -480,10 +481,12 @@ subscribe_t *read_subscribe_message(int fd) {
     int ret = select(fd + 1, &read_fds, NULL, NULL, &timeout);
     if (ret == -1) {
         perror("select");
+        delete_subscribe_message(subscribe_message);
         return NULL;
     } else if (ret == 0) {
         // Timeout atteint avant que la socket soit prête pour la lecture
         perror("timeout");
+        delete_subscribe_message(subscribe_message);
         return NULL;
     }
 
@@ -491,6 +494,7 @@ subscribe_t *read_subscribe_message(int fd) {
 	int nrecv = recv(fd, msg, 22, 0);
     if (nrecv < 0) {
         perror("recv server message");
+        delete_subscribe_message(subscribe_message);
         return NULL;
     }
 
@@ -561,7 +565,7 @@ notification_t *read_notification_message(int fd) {
 
 	char msg[34];
 	bzero(msg, 34);
-	int nrecv = recv(fd, msg, 34, 0);
+	int nrecv = read(fd, msg, 34);
     if (nrecv != 34) {
         perror("recv notif");
         delete_notification_message(notif_mess);

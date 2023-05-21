@@ -8,7 +8,6 @@ char *hostname;
 char hostaddr[INET6_ADDRSTRLEN] = {0};
 static subscribe_thread_t *readInputThreadId = NULL;
 static int action = 1;
-static pthread_mutex_t readyDescriptorsMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char **argv) {
     // hostname
@@ -84,12 +83,12 @@ int main(int argc, char **argv) {
 
     while(action){
         printf("Que voulez-vous faire ?\n");
-        printf("1. Poster un billet (p)\n");
-        printf("2. Lister les n derniers billets (l)\n");
-		printf("3. Abonnement a un fil (s)\n");
-        printf("4. Ajouter un fichier (a)\n");
-        printf("5. Télécharger un fichier (t)\n");
-        printf("6. Quitter (q)\n");
+        printf("- Poster un billet (p)\n");
+        printf("- Lister les n derniers billets (l)\n");
+		printf("- Abonnement a un fil (s)\n");
+        printf("- Ajouter un fichier (a)\n");
+        printf("- Télécharger un fichier (t)\n");
+        printf("- Quitter (q)\n");
 
         int nread = read(0, buf, MAX_MESSAGE_SIZE);
         if (nread == -1) {
@@ -121,9 +120,7 @@ int main(int argc, char **argv) {
                 action = 0;
                 break;
             default:
-                printf("Veuillez entrer `p` pour poster un billet ou `l` pour lister les billets\n");
-                printf("ou `a` pour ajouter un fichier ou `t` pour télécharger un fichier\n");
-                printf("ou `q` pour quitter l'application.\n");
+                printf(" /!\\ Le caractère que vous avez entré ne correspond à aucune action disponible /!\\\n");
                 break;
         }
 
@@ -266,7 +263,7 @@ int poster_billet(int id){
         }
         else {
             datalen = nread;
-            data[nread] = 0;
+            data[nread - 1] = 0;
             post = 0;
         }
     }
@@ -298,8 +295,6 @@ int poster_billet(int id){
         goto error;
     }
 
-    // printf("Code requête : %d\n", mes -> codereq);
-    // printf("Id : %d\n", mes -> id);
     if(mes -> codereq == 2) {
         printf("Message posté sur le fil %d !\n\n", mes -> numfil);
     }else {
@@ -661,7 +656,7 @@ int telecharger_fichier(void) {
         goto error;
     }
 
-    printf("Le fichier %s a bien été téléchargé, vous le retrouverez dans le dossier `telechargement`\n\n", filename);
+    printf("Le fichier %s a bien été téléchargé\nVous le retrouverez dans le dossier `telechargement`\n\n", filename);
 
     // Libération des pointeurs
     close(sock);
@@ -706,16 +701,22 @@ int read_int(void) {
 }
 
 void *get_notification(void *arg) {
-	pthread_mutex_lock(&readyDescriptorsMutex);
-	int socket_udp = *(int *)arg;
     fd_set readfds;
 	notification_t *buffer = NULL;
 	char notification[1024] = {0};
 	int pos = 0;
+    int max_sock = -1;
 
 	while (action) {
         FD_ZERO(&readfds);
-        FD_SET(socket_udp, &readfds);
+        max_sock = -1;
+		socket_list_t *move = readInputThreadId -> socket;
+        // Ajout des sockets de la liste
+		while (move) {
+            max_sock = max_sock < *move -> sock ? *move -> sock : max_sock;
+			FD_SET(*move -> sock, &readfds);
+			move = move -> next;
+		}
         // Définir le timeout pour select
 		int max = 0;
 		char tmp[1024] = {0};
@@ -724,42 +725,58 @@ void *get_notification(void *arg) {
         timeout.tv_usec = 0;
 
         // Utiliser select pour attendre des données en lecture
-        int readyDescriptors = select(socket_udp + 1, &readfds, NULL, NULL, &timeout);
+        int readyDescriptors = select(max_sock + 1, &readfds, NULL, NULL, &timeout);
         if (readyDescriptors == -1) {
             break;
         }
-		else if (readyDescriptors > 0 && FD_ISSET(socket_udp, &readfds)) {
-			// Le socket client a des données disponibles pour la lecture
-			buffer = read_notification_message(socket_udp);
-			if (!buffer) {
-				perror("read in the select");
-				break;
-			}
-			else {
-				remove_hash(buffer -> pseudo);
-                char buf[1024] = {0};
-                char pseudo[11] = {0};
-                memmove(pseudo, buffer -> pseudo, 10);
-                char data[21] = {0};
-                memmove(data, buffer -> data, 20);
-				sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
-				int	bytesRead = strlen(buf);
-				if (pos + bytesRead < 1023) {
-					memmove(notification + pos, buf, bytesRead);
-					pos += bytesRead;
-					delete_notification_message(buffer);
-				}
-				else {
-					max = 1;
-					memmove(tmp, buf, bytesRead);
-					delete_notification_message(buffer);
+		else if (readyDescriptors > 0) {
+            // Boucle sur les sockets de la liste
+            for (socket_list_t *move = readInputThreadId -> socket; move; move = move -> next) {
+                int i = *move -> sock;
+				// Le socket client a des données disponibles pour la lecture
+				if (FD_ISSET(i, &readfds)) {
+					buffer = read_notification_message(i);
+					if (!buffer) {
+						perror("read in the select");
+						break;
+					}
+					else {
+						remove_hash(buffer -> pseudo);
+						char buf[1024] = {0};
+						char pseudo[11] = {0};
+						memmove(pseudo, buffer -> pseudo, 10);
+						char data[21] = {0};
+						memmove(data, buffer -> data, 20);
+						sprintf(buf, "[%d] %s: %s\n", buffer -> numfil, pseudo, data);
+						int	bytesRead = strlen(buf);
+						if (pos + bytesRead < 1023) {
+							memmove(notification + pos, buf, bytesRead);
+							pos += bytesRead;
+							delete_notification_message(buffer);
+						}
+						else {
+							max = 1;
+							memmove(tmp, buf, bytesRead);
+							delete_notification_message(buffer);
+						}
+					}
+					break;
 				}
 			}
 		}
+        // Timeout
 		else if ((readyDescriptors == 0 || max == 1) && notification[0] != 0){
-			printf("%s", notification);
+			printf("\nNouveauté(s):\n%s\n", notification);
 			bzero(notification, 1024);
+			printf("Que voulez-vous faire ?\n");
+			printf("- Poster un billet (p)\n");
+			printf("- Lister les n derniers billets (l)\n");
+			printf("- Abonnement a un fil (s)\n");
+			printf("- Ajouter un fichier (a)\n");
+			printf("- Télécharger un fichier (t)\n");
+			printf("- Quitter (q)\n");
 			pos = 0;
+			readyDescriptors = -1;
 			if (tmp[0] != '\0') {
 				memmove(notification, tmp, strlen(tmp));
 				pos += strlen(tmp);
@@ -767,8 +784,8 @@ void *get_notification(void *arg) {
         }
     }
 	free(arg);
-    close(socket_udp);
-	pthread_mutex_unlock(&readyDescriptorsMutex);
+    for (socket_list_t *move = readInputThreadId -> socket; move; move = move -> next)
+		close(*move -> sock);
     // Fin
     return NULL;
 }
@@ -788,6 +805,7 @@ int abonnement_billets(int id) {
         int nread = read(0, ans, MAX_MESSAGE_SIZE);
         if (nread == -1) {
             perror("read numfil");
+			close(sock);
             return -1;
         }
         printf("\n");
@@ -800,6 +818,18 @@ int abonnement_billets(int id) {
         }
         memset(ans, 0, MAX_MESSAGE_SIZE);
     }
+
+	if (readInputThreadId) {
+		socket_list_t *move = readInputThreadId -> socket;
+		while (move != NULL) {
+			if (move -> numfil == numfil) {
+                printf("Vous êtes déjà abonné au fil %d\n", numfil);
+				close(sock);
+				return -1;
+            }
+			move = move -> next;
+		}
+	}
 
 	client_message_t *billet = create_client_message(4, id, numfil, 0, 0, "");
     if(billet == NULL){
@@ -856,8 +886,8 @@ int abonnement_billets(int id) {
 	}
 
 	struct ipv6_mreq group = {0};
-	
-    if (inet_pton(AF_INET6, ip, &group.ipv6mr_multiaddr) <= 0) {
+
+    if (inet_pton(AF_INET6, ip, &group.ipv6mr_multiaddr.s6_addr) <= 0) {
         perror("inet_pton");
 		free(ip);
         return -1;
@@ -876,9 +906,11 @@ int abonnement_billets(int id) {
         return -1;
     }
 
-	struct sockaddr_in6 addr = {0};
+	struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(PORT);
+	addr.sin6_port = htons(PORT + numfil);
+	addr.sin6_addr = in6addr_any;
 	int nbind = bind(socket_udp, (struct sockaddr *) &addr, sizeof(addr));
 	if (nbind < 0) {
 		perror("bind");
@@ -894,16 +926,22 @@ int abonnement_billets(int id) {
 		close(socket_udp);
 		return 1;
 	}
-	*socket_udp_ptr = socket_udp;
+	memmove(socket_udp_ptr, &socket_udp, sizeof(int));
 
 	if (!readInputThreadId) {
 		readInputThreadId = calloc(1, sizeof(*readInputThreadId));
 		if (!readInputThreadId) {
 			goto error;
 		}
-		readInputThreadId -> next = NULL;
-		readInputThreadId -> sock = socket_udp_ptr;
-		if (pthread_create(&readInputThreadId -> thread, NULL, get_notification, (void *)socket_udp_ptr) != 0) {
+		readInputThreadId -> socket = calloc(1, sizeof(*readInputThreadId -> socket));
+		if (!readInputThreadId -> socket) {
+			close(socket_udp);
+			free(socket_udp_ptr);
+			return 1;
+		}
+		readInputThreadId -> socket -> sock = socket_udp_ptr;
+		readInputThreadId -> socket -> numfil = numfil;
+		if (pthread_create(&readInputThreadId -> thread, NULL, get_notification, NULL) != 0) {
 			perror("abonnement_billets pthread_create");
 			free(readInputThreadId);
 			readInputThreadId = NULL;
@@ -911,21 +949,17 @@ int abonnement_billets(int id) {
 		}
 	}
 	else {
-		subscribe_thread_t *move = readInputThreadId;
-		while (move -> next != NULL)
-			move = move ->next;
+		socket_list_t *move = readInputThreadId -> socket;
+		while (move -> next != NULL) {
+			move = move -> next;
+        }
 		move -> next = calloc(1, sizeof(*move));
 		if (!move -> next) {
 			goto error;
 		}
 		move -> next -> sock = socket_udp_ptr;
+        move -> next -> numfil = numfil;
 		move -> next -> next = NULL;
-		if (pthread_create(&move -> next -> thread, NULL, get_notification, (void *)socket_udp_ptr) != 0) {
-            perror("abonnement_billets pthread_create");
-            free(move -> next);
-            move -> next = NULL;
-			goto error;
-        }
 	}
 	printf("Abonnement avec succes sur le fil : %d\n", numfil);
     return 0;
@@ -937,16 +971,17 @@ int abonnement_billets(int id) {
 }
 
 void clean_threads(void) {
-    if (readInputThreadId == NULL)
+    if (!readInputThreadId)
         return;
-	else {
-		subscribe_thread_t *move = readInputThreadId;
-		subscribe_thread_t *tmp = move;
-		while (move) {
-			move = move -> next;
-			pthread_join(tmp -> thread, NULL);
-			free(tmp);
-			tmp = move;
-		}
-	}
+
+    pthread_join(readInputThreadId -> thread, NULL);
+    socket_list_t *move = readInputThreadId -> socket;
+    socket_list_t *tmp = move;
+    while (move) {
+        move = move -> next;
+        free(tmp -> sock);
+        free(tmp);
+        tmp = move;
+    }
+    free(readInputThreadId);
 }
